@@ -7,6 +7,8 @@ function Menu.augment(AnimationLab, radioItem)
     local old_init = AnimationLab.init
     function AnimationLab:init()
         old_init(self)
+        -- New key on purpose: do not inherit the old curl-era page_waveform
+        -- setting, which could otherwise silently force DU after upgrading.
         self.strip_waveform = G_reader_settings:readSetting("animationlab_strip_waveform") or "auto"
         self.strip_shape = G_reader_settings:readSetting("animationlab_strip_shape") or "straight"
         if self.strip_shape ~= "straight" and self.strip_shape ~= "diagonal"
