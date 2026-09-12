@@ -91,4 +91,4 @@ Internal `no_page_turn` calls and multi-page jumps are left alone.
 
 ## Self-update
 
-**update plugin** remains the final menu item. It updates only `animationlab.koplugin` from this repository's `main` branch, verifies revision/blob integrity, syntax-checks downloaded Lua, stages the replacement, retains a rollback backup, and offers to restart KOReader.
+**update plugin** remains the final menu item. It updates only `page-turn-animation.koplugin` from this repository's `main` branch, verifies revision/blob integrity, syntax-checks downloaded Lua, stages the replacement, retains a rollback backup, and offers to restart KOReader.

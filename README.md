@@ -2,7 +2,7 @@
 
 KOReader page-turn animation plugin for Kindle Paperwhite 4 / Rex, extracted from `koplugin-experiments`.
 
-The installable plugin currently keeps its original folder/internal ID, `animationlab.koplugin` / `animationlab`, so existing KOReader settings continue to work.
+The installable plugin folder is `page-turn-animation.koplugin`. The internal plugin ID and settings keys remain `animationlab` so existing KOReader settings continue to work.
 
 Version 0.7.0 keeps the fast six-step KPW4 reveal and adds page-like reveal geometry without bringing back the slow curl renderer.
 
@@ -41,8 +41,8 @@ For a normal one-page turn:
 
 ## Installation
 
-Copy `animationlab.koplugin` into KOReader's `plugins` directory and restart KOReader.
+Copy `page-turn-animation.koplugin` into KOReader's `plugins` directory and restart KOReader.
 
 ## Self-update
 
-The final menu entry, **update plugin**, updates `animationlab.koplugin` from this repository's `main` branch, verifies revision/blob integrity, syntax-checks downloaded Lua, stages the replacement, retains a rollback backup, and offers to restart KOReader.
+The final menu entry, **update plugin**, updates `page-turn-animation.koplugin` from this repository's `main` branch, verifies revision/blob integrity, syntax-checks downloaded Lua, stages the replacement, retains a rollback backup, and offers to restart KOReader.

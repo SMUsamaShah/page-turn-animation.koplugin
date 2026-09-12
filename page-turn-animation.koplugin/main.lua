@@ -38,7 +38,7 @@ dofile(plugin_dir .. "pageturnhook.lua").augment(AnimationLab, StripReveal)
 local updater = dofile(plugin_dir .. "pluginupdater.lua").new{
     repository = "SMUsamaShah/page-turn-animation.koplugin",
     branch = "main",
-    folder = "animationlab.koplugin",
+    folder = "page-turn-animation.koplugin",
 }
 
 local old_add = AnimationLab.addToMainMenu
