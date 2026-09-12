@@ -62,6 +62,8 @@ local function submitRegion(waveform, x, y, w, h)
     elseif waveform == "du" then
         Screen:refreshFast(x, y, w, h)
     else
+        -- Original KPW4 ZIP path. On Kindle Rex KOReader's UI refresh maps
+        -- to the AUTO waveform.
         Screen:refreshUI(x, y, w, h)
     end
     if Screen.marker and Screen.marker ~= before then
@@ -69,11 +71,18 @@ local function submitRegion(waveform, x, y, w, h)
     end
 end
 
+-- Return how much of a horizontal band has been revealed (0..1).
+-- All shapes start together at 0 and finish aligned at 1. The shaped modes use
+-- a p*(1-p) envelope so their lead disappears naturally at the final frame.
 local function shapedProgress(shape, progress, y_norm)
     if shape == "diagonal" then
+        -- Bottom is ahead, top is behind. The edge remains approximately
+        -- diagonal while both ends converge to a straight edge at completion.
         local envelope = 4 * progress * (1 - progress)
         return clamp(progress + 0.22 * (y_norm - 0.5) * envelope, 0, 1)
     elseif shape == "bottom_curve" then
+        -- A curved bottom-corner flip. Bottom bands accelerate early, then slow
+        -- relative to the top so the entire edge straightens before finishing.
         local envelope = 4 * progress * (1 - progress)
         local bottom_weight = y_norm * y_norm
         return clamp(progress + 0.18 * bottom_weight * envelope, 0, 1)
@@ -81,6 +90,11 @@ local function shapedProgress(shape, progress, y_norm)
     return progress
 end
 
+-- KPW4 reveal: six temporal steps. Straight mode exactly retains the original
+-- full-height vertical strip behavior. Shaped modes divide the page into a few
+-- horizontal bands in RAM, but still submit only ONE panel update per step: the
+-- bounding rectangle containing every newly revealed band. This preserves the
+-- cheap six-update display path instead of issuing dozens of E-Ink updates.
 function StripReveal.run(old, new, direction, config)
     config = config or {}
     local ready, why = StripReveal.preflight(config)
@@ -102,6 +116,8 @@ function StripReveal.run(old, new, direction, config)
     Screen.bb:blitFrom(old, 0, 0, 0, 0, sw, sh)
 
     for i = 1, steps do
+        -- Fixed mode targets absolute strip times, so drawing/submit overhead
+        -- does not accumulate into progressively later frames.
         if scheduler == "fixed" and i > 1 and delay_ms > 0 then
             local deadline = started + ((i - 1) * delay_ms / 1000)
             local now = nowSeconds()
@@ -123,6 +139,9 @@ function StripReveal.run(old, new, direction, config)
             local local_progress = shapedProgress(shape, progress, y_norm)
             local dx = math.floor(sw * local_progress + 0.5)
             local prev_dx = previous[band] or 0
+
+            -- The formulas above are monotonic, but keep this guard so a future
+            -- shape can never try to "unreveal" pixels and create ghost trails.
             if dx < prev_dx then dx = prev_dx end
             if i == steps then dx = sw end
 
@@ -144,6 +163,9 @@ function StripReveal.run(old, new, direction, config)
         end
 
         if changed and dirty_right > dirty_left then
+            -- One E-Ink update per temporal step. For shaped edges this box is
+            -- wider than the actually changed pixels, but avoids many small
+            -- panel submissions and keeps the animation smooth on PW4.
             last_marker = submitRegion(
                 waveform, dirty_left, 0, dirty_right - dirty_left, sh) or last_marker
         end
