@@ -1,36 +1,22 @@
 # Page Turn Animation for KOReader
 
-KOReader page-turn animation plugin for Kindle Paperwhite 4 / Rex, extracted from `koplugin-experiments`.
+A KOReader plugin that animates normal page turns on E-Ink devices, currently tuned and tested around the Kindle Paperwhite 4 / Rex display path.
 
-The installable plugin folder is `page-turn-animation.koplugin`. The internal plugin ID and settings keys remain `animationlab` so existing KOReader settings continue to work.
+The installable plugin folder is `page-turn-animation.koplugin`. Its KOReader plugin ID is `pageturnanimation`.
 
-Version 0.7.0 keeps the fast six-step KPW4 reveal and adds page-like reveal geometry without bringing back the slow curl renderer.
+Version **0.1.0** uses a fast six-step reveal and supports several page-like edge shapes without a heavyweight curl renderer.
 
-## How it works
+## Features
 
-For a normal one-page turn:
+- Animate normal one-page taps, swipes, and page-turn keys.
+- Straight, diagonal, or curved-bottom reveal shapes.
+- AUTO/UI, DU/Fast, or A2 refresh waveform.
+- Free-running or fixed-interval scheduling.
+- Configurable step delay from 0 to 100 ms.
+- Optional full clean refresh after the animation.
+- Built-in self-update from this repository.
 
-1. KOReader handles navigation and renders the destination page normally.
-2. The plugin snapshots the old framebuffer before paint and captures the completed destination framebuffer immediately before the first physical refresh.
-3. The destination is revealed in **6 temporal steps**.
-4. Each step submits only **one E-Ink update**. Straight mode uses the original full-height strip. Shaped modes calculate the edge in 24 horizontal bands in RAM, then refresh one bounding rectangle around all newly revealed pixels.
-5. After the animation the exact destination framebuffer is restored.
-6. Normally one full-screen `refreshUI()` / AUTO settle is performed. Optionally, **Full clean refresh afterwards** replaces that settle with `refreshFull()` for stronger ghost cleanup.
-
-## Reveal shapes
-
-- **Straight vertical (ZIP original)**
-- **Diagonal — bottom first**
-- **Curved bottom flip**
-
-## Page-turn animation settings
-
-- **Waveform:** AUTO / UI, DU / Fast, or A2
-- **Scheduling:** free-running or fixed interval
-- **Strip delay:** 0, 5, 10, 20, 30, 40, 50, 60, 80, or 100 ms
-- **Full clean refresh afterwards:** optional `refreshFull()` cleanup
-
-## Known-good baseline
+## Known-good default
 
 - Straight vertical
 - AUTO / UI
@@ -42,6 +28,10 @@ For a normal one-page turn:
 ## Installation
 
 Copy `page-turn-animation.koplugin` into KOReader's `plugins` directory and restart KOReader.
+
+## How it works
+
+For an eligible one-page turn, KOReader performs navigation and renders the destination page normally. Page Turn Animation snapshots the old framebuffer before paint and captures the completed destination framebuffer before the first physical refresh. It then reveals the destination in six steps, restores the exact destination framebuffer, and performs the final settle refresh.
 
 ## Self-update
 
