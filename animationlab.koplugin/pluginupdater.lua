@@ -32,6 +32,8 @@ local function escape(value, keep_slashes)
         function(c) return string.format("%%%02X", c:byte()) end))
 end
 
+-- LuaSec checks the certificate chain with verify=peer, but not the hostname.
+-- Check DNS subjectAltNames too, allowing a wildcard for exactly one label.
 local function tlsSocket()
     local conn = require("ssl.https").tcp{
         verify = "peer", cafile = "data/ca-bundle.crt", protocol = "tlsv1_2",
@@ -92,6 +94,7 @@ function Updater.new(options)
         can_update = options.can_update }, Updater)
 end
 
+-- Runs in a cancellable subprocess. No installed files are written here.
 function Updater:download()
     local json = require("rapidjson")
     local sha1 = require("ffi/sha2").sha1
@@ -134,6 +137,7 @@ function Updater:download()
     return { revision = revision, files = files }
 end
 
+-- Do not follow symlinks while cleaning our staging/backup directories.
 local function removeTree(path)
     local lfs = require("libs/libkoreader-lfs")
     local mode = lfs.symlinkattributes(path, "mode")
@@ -145,6 +149,8 @@ local function removeTree(path)
     elseif mode then check(os.remove(path)) end
 end
 
+-- Local transaction: write and close everything first, then swap folders.
+-- If the second rename fails, put the original folder back immediately.
 function Updater:install(package)
     local lfs = require("libs/libkoreader-lfs")
     local util = require("util")
