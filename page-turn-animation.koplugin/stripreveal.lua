@@ -36,7 +36,10 @@ function StripReveal.preflight(config)
     elseif waveform ~= "auto" and waveform ~= "du" and waveform ~= "a2" then
         return nil, "Unknown strip waveform: " .. tostring(waveform)
     end
-    if shape ~= "straight" and shape ~= "diagonal" and shape ~= "bottom_curve" then
+    if shape ~= "straight" and shape ~= "diagonal"
+            and shape ~= "bottom_curve"
+            and shape ~= "bottom_curve2"
+            and shape ~= "bottom_curve3" then
         return nil, "Unknown reveal shape: " .. tostring(shape)
     end
     return true
@@ -72,8 +75,9 @@ local function submitRegion(waveform, x, y, w, h)
 end
 
 -- Return how much of a horizontal band has been revealed (0..1).
--- Diagonal mode bulges most around the middle. Curved-bottom mode starts with
--- a strong J-shaped lower lead and continuously straightens as the turn ends.
+-- Diagonal mode bulges most around the middle. Curved-bottom variants keep the
+-- top nearly straight while concentrating different amounts of lead near the
+-- lower corner.
 local function shapedProgress(shape, progress, y_norm)
     if shape == "diagonal" then
         -- Bottom is ahead, top is behind. The edge remains approximately
@@ -81,13 +85,24 @@ local function shapedProgress(shape, progress, y_norm)
         local envelope = 4 * progress * (1 - progress)
         return clamp(progress + 0.22 * (y_norm - 0.5) * envelope, 0, 1)
     elseif shape == "bottom_curve" then
-        -- Start with the lower edge substantially ahead, producing the J shape,
-        -- then let that positional lead decay continuously to zero. Fourth-power
-        -- vertical weighting keeps the upper page almost straight and bends only
-        -- the lower portion. A stronger 45% maximum lead emphasizes the curl.
+        -- Original curved bottom flip.
         local bottom_weight = y_norm ^ 4
         local remaining_lead = 0.45 * bottom_weight * (1 - progress)
         return clamp(progress + remaining_lead, 0, 1)
+    elseif shape == "bottom_curve2" then
+        -- Candidate chosen in the interactive demo:
+        -- clamp(progress + 0.63 * (y_norm ^ 8) * ((1-progress) ^ 1), 0, 1)
+        local bottom_weight = y_norm ^ 8
+        local remaining_lead = 0.63 * bottom_weight * ((1 - progress) ^ 1)
+        return clamp(progress + remaining_lead, 0, 1)
+    elseif shape == "bottom_curve3" then
+        -- Hybrid candidate chosen in the interactive demo:
+        -- startLead = 0.41 * (y_norm ^ 8) * ((1-progress) ^ 3)
+        -- bulge     = 0.18 * (y_norm ^ 8) * (4*progress*(1-progress))
+        local bottom_weight = y_norm ^ 8
+        local start_lead = 0.41 * bottom_weight * ((1 - progress) ^ 3)
+        local bulge = 0.18 * bottom_weight * (4 * progress * (1 - progress))
+        return clamp(progress + start_lead + bulge, 0, 1)
     end
     return progress
 end
