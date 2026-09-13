@@ -80,84 +80,86 @@ function Menu.augment(PageTurnAnimation, radioItem)
             function() self:setPageSetting(field, value) end)
     end
 
-    function PageTurnAnimation:pageTurnSettingsItem()
+    function PageTurnAnimation:pageTurnSettingsItems()
         return {
-            text = _("Page-turn animation settings"),
-            sub_item_table = {
-                {
-                    text = _("Reveal shape"),
-                    sub_item_table = {
-                        settingRadio(self, _("Straight vertical (default)"), "strip_shape", "straight"),
-                        settingRadio(self, _("Diagonal — bottom first"), "strip_shape", "diagonal"),
-                        settingRadio(self, _("Curved bottom flip"), "strip_shape", "bottom_curve"),
-                    },
+            {
+                text = _("Reveal shape"),
+                sub_item_table = {
+                    settingRadio(self, _("Straight vertical (default)"), "strip_shape", "straight"),
+                    settingRadio(self, _("Diagonal — bottom first"), "strip_shape", "diagonal"),
+                    settingRadio(self, _("Curved bottom flip"), "strip_shape", "bottom_curve"),
                 },
-                {
-                    text = _("Waveform"),
-                    sub_item_table = {
-                        settingRadio(self, _("AUTO / UI (default)"), "strip_waveform", "auto"),
-                        settingRadio(self, _("DU / Fast"), "strip_waveform", "du"),
-                        settingRadio(self, _("A2"), "strip_waveform", "a2"),
-                    },
+            },
+            {
+                text = _("Waveform"),
+                sub_item_table = {
+                    settingRadio(self, _("AUTO / UI (default)"), "strip_waveform", "auto"),
+                    settingRadio(self, _("DU / Fast"), "strip_waveform", "du"),
+                    settingRadio(self, _("A2"), "strip_waveform", "a2"),
                 },
-                {
-                    text = _("Scheduling"),
-                    sub_item_table = {
-                        settingRadio(self, _("Free-running (default)"), "page_scheduler", "free"),
-                        settingRadio(self, _("Fixed interval"), "page_scheduler", "fixed"),
-                    },
+            },
+            {
+                text = _("Scheduling"),
+                sub_item_table = {
+                    settingRadio(self, _("Free-running (default)"), "page_scheduler", "free"),
+                    settingRadio(self, _("Fixed interval"), "page_scheduler", "fixed"),
                 },
-                {
-                    text = _("Animation steps"),
-                    help_text = _("More steps make each reveal strip thinner, but submit more E-Ink updates. With the same delay, more steps also increase the total animation time."),
-                    sub_item_table = {
-                        settingRadio(self, "3", "page_steps", 3),
-                        settingRadio(self, "6 (default)", "page_steps", 6),
-                        settingRadio(self, "12", "page_steps", 12),
-                        settingRadio(self, "18", "page_steps", 18),
-                        settingRadio(self, "24", "page_steps", 24),
-                    },
+            },
+            {
+                text = _("Animation steps"),
+                help_text = _("More steps make each reveal strip thinner, but submit more E-Ink updates. With the same delay, more steps also increase the total animation time."),
+                sub_item_table = {
+                    settingRadio(self, "3", "page_steps", 3),
+                    settingRadio(self, "6 (default)", "page_steps", 6),
+                    settingRadio(self, "12", "page_steps", 12),
+                    settingRadio(self, "18", "page_steps", 18),
+                    settingRadio(self, "24", "page_steps", 24),
                 },
-                {
-                    text = _("Strip delay"),
-                    sub_item_table = {
-                        settingRadio(self, "0 ms", "page_delay_ms", 0),
-                        settingRadio(self, "5 ms", "page_delay_ms", 5),
-                        settingRadio(self, "10 ms", "page_delay_ms", 10),
-                        settingRadio(self, "20 ms", "page_delay_ms", 20),
-                        settingRadio(self, "30 ms", "page_delay_ms", 30),
-                        settingRadio(self, "40 ms (default)", "page_delay_ms", 40),
-                        settingRadio(self, "50 ms", "page_delay_ms", 50),
-                        settingRadio(self, "60 ms", "page_delay_ms", 60),
-                        settingRadio(self, "80 ms", "page_delay_ms", 80),
-                        settingRadio(self, "100 ms", "page_delay_ms", 100),
-                    },
+            },
+            {
+                text = _("Strip delay"),
+                sub_item_table = {
+                    settingRadio(self, "0 ms", "page_delay_ms", 0),
+                    settingRadio(self, "5 ms", "page_delay_ms", 5),
+                    settingRadio(self, "10 ms", "page_delay_ms", 10),
+                    settingRadio(self, "20 ms", "page_delay_ms", 20),
+                    settingRadio(self, "30 ms", "page_delay_ms", 30),
+                    settingRadio(self, "40 ms (default)", "page_delay_ms", 40),
+                    settingRadio(self, "50 ms", "page_delay_ms", 50),
+                    settingRadio(self, "60 ms", "page_delay_ms", 60),
+                    settingRadio(self, "80 ms", "page_delay_ms", 80),
+                    settingRadio(self, "100 ms", "page_delay_ms", 100),
                 },
-                {
-                    text = _("Full clean refresh afterwards"),
-                    checked_func = function() return self.strip_full_refresh end,
-                    callback = function()
-                        self:setPageSetting("strip_full_refresh", not self.strip_full_refresh)
-                    end,
-                    help_text = _("After the animation, force a full-screen refreshFull() cleanup. Useful with A2 ghosting, but slower and may visibly flash. When disabled, the normal full-screen UI settle is still used."),
-                },
+            },
+            {
+                text = _("Full clean refresh afterwards"),
+                checked_func = function() return self.strip_full_refresh end,
+                callback = function()
+                    self:setPageSetting("strip_full_refresh", not self.strip_full_refresh)
+                end,
+                help_text = _("After the animation, force a full-screen refreshFull() cleanup. Useful with A2 ghosting, but slower and may visibly flash. When disabled, the normal full-screen UI settle is still used."),
             },
         }
     end
 
     function PageTurnAnimation:addToMainMenu(menu_items)
+        local sub_items = {
+            {
+                text = _("Animate normal page turns"),
+                checked_func = function() return self.auto_page_turn end,
+                callback = function() self:setAutoPageTurn(not self.auto_page_turn) end,
+                help_text = _("Animate normal one-page taps, swipes and page-turn keys with the KPW4 reveal."),
+            },
+        }
+
+        for _, item in ipairs(self:pageTurnSettingsItems()) do
+            sub_items[#sub_items + 1] = item
+        end
+
         menu_items.pageturnanimation = {
             text = _("Page Turn Animation"),
             sorting_hint = "more_tools",
-            sub_item_table = {
-                {
-                    text = _("Animate normal page turns"),
-                    checked_func = function() return self.auto_page_turn end,
-                    callback = function() self:setAutoPageTurn(not self.auto_page_turn) end,
-                    help_text = _("Animate normal one-page taps, swipes and page-turn keys with the KPW4 reveal."),
-                },
-                self:pageTurnSettingsItem(),
-            },
+            sub_item_table = sub_items,
         }
     end
 end
