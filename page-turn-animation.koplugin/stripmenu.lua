@@ -18,6 +18,11 @@ function Menu.augment(PageTurnAnimation, radioItem)
             self.page_scheduler = "free"
         end
         self.page_delay_ms = tonumber(G_reader_settings:readSetting("pageturnanimation_page_delay_ms")) or 40
+        self.page_steps = tonumber(G_reader_settings:readSetting("pageturnanimation_page_steps")) or 6
+        if self.page_steps ~= 3 and self.page_steps ~= 6 and self.page_steps ~= 12
+                and self.page_steps ~= 18 and self.page_steps ~= 24 then
+            self.page_steps = 6
+        end
         local saved_full_refresh = G_reader_settings:readSetting("pageturnanimation_strip_full_refresh")
         self.strip_full_refresh = saved_full_refresh == true
         local saved_auto = G_reader_settings:readSetting("pageturnanimation_auto_page_turn")
@@ -41,6 +46,7 @@ function Menu.augment(PageTurnAnimation, radioItem)
             shape = self.strip_shape,
             scheduler = self.page_scheduler,
             delay_ms = self.page_delay_ms,
+            steps = self.page_steps,
             full_refresh = self.strip_full_refresh,
         }
     end
@@ -102,6 +108,17 @@ function Menu.augment(PageTurnAnimation, radioItem)
                     },
                 },
                 {
+                    text = _("Animation steps"),
+                    help_text = _("More steps make each reveal strip thinner, but submit more E-Ink updates. With the same delay, more steps also increase the total animation time."),
+                    sub_item_table = {
+                        settingRadio(self, "3", "page_steps", 3),
+                        settingRadio(self, "6 (default)", "page_steps", 6),
+                        settingRadio(self, "12", "page_steps", 12),
+                        settingRadio(self, "18", "page_steps", 18),
+                        settingRadio(self, "24", "page_steps", 24),
+                    },
+                },
+                {
                     text = _("Strip delay"),
                     sub_item_table = {
                         settingRadio(self, "0 ms", "page_delay_ms", 0),
@@ -137,7 +154,7 @@ function Menu.augment(PageTurnAnimation, radioItem)
                     text = _("Animate normal page turns"),
                     checked_func = function() return self.auto_page_turn end,
                     callback = function() self:setAutoPageTurn(not self.auto_page_turn) end,
-                    help_text = _("Animate normal one-page taps, swipes and page-turn keys with the KPW4 six-step reveal."),
+                    help_text = _("Animate normal one-page taps, swipes and page-turn keys with the KPW4 reveal."),
                 },
                 self:pageTurnSettingsItem(),
                 {
