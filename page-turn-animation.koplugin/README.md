@@ -2,7 +2,7 @@
 
 KOReader page-turn animation plugin for E-Ink devices, currently tuned around the Kindle Paperwhite 4 / Rex display path.
 
-Version **0.1.0** provides a fast six-step reveal with straight, diagonal, and curved-bottom edge shapes.
+Version **0.1.0** provides a fast configurable-step reveal with straight, diagonal, and curved-bottom edge shapes.
 
 ## How it works
 
@@ -10,7 +10,7 @@ For a normal one-page turn:
 
 1. KOReader handles navigation and renders the destination page normally.
 2. Page Turn Animation snapshots the old framebuffer before paint and captures the completed destination framebuffer immediately before the first physical refresh.
-3. The destination is revealed in **6 temporal steps**.
+3. The destination is revealed in a configurable number of temporal steps: **3, 6, 12, 18, or 24**. The default remains **6**.
 4. Each step submits only **one E-Ink update**. Straight mode uses a full-height strip. Shaped modes calculate the edge in 24 horizontal bands in RAM, then refresh one bounding rectangle around all newly revealed pixels.
 5. After the animation the exact destination framebuffer is restored.
 6. Normally one full-screen `refreshUI()` / AUTO settle is performed. Optionally, **Full clean refresh afterwards** replaces that settle with `refreshFull()` for stronger ghost cleanup.
@@ -27,9 +27,9 @@ The bottom edge leads while the top lags, producing a diagonal page-turn edge. T
 
 ### Curved bottom flip
 
-Lower parts of the page accelerate early with quadratic vertical weighting, creating a curved edge. The bottom then slows relative to the top so the edge straightens and the full page finishes aligned.
+Most of the edge remains close to vertical while the lower part bends sharply ahead. Fourth-power vertical weighting concentrates the lead near the bottom; the temporal envelope brings the edge back together at completion.
 
-The shaped modes still issue only six physical panel updates total; the extra geometry is calculated in the framebuffer before each update.
+The shaped modes still issue only one physical panel update per animation step; the extra geometry is calculated in the framebuffer before each update.
 
 ## Page-turn animation settings
 
@@ -50,6 +50,12 @@ The shaped modes still issue only six physical panel updates total; the extra ge
 - **Free-running (default)** — submit a reveal step, then wait the configured delay.
 - **Fixed interval** — target absolute step times from the start so rendering/submit overhead does not accumulate.
 
+### Animation steps
+
+Available values: **3, 6, 12, 18, and 24**. **6** is the default.
+
+More steps make each reveal strip narrower and submit more E-Ink updates. With the same strip delay, more steps also increase the nominal animation duration.
+
 ### Strip delay
 
 Available values: 0, 5, 10, 20, 30, 40, 50, 60, 80, and 100 ms. **40 ms** is the default.
@@ -58,7 +64,7 @@ Available values: 0, 5, 10, 20, 30, 40, 50, 60, 80, and 100 ms. **40 ms** is the
 
 Disabled by default.
 
-- **Off:** after the six reveal updates, restore the exact destination and perform a full-screen `refreshUI()` / AUTO settle.
+- **Off:** after the configured reveal updates, restore the exact destination and perform a full-screen `refreshUI()` / AUTO settle.
 - **On:** restore the exact destination and call full-screen `refreshFull()` instead. This is intended for aggressive modes such as A2 when ghost cleanup matters more than the extra latency or visible flash.
 
 ## Menu
@@ -68,6 +74,7 @@ Disabled by default.
    - Reveal shape
    - Waveform
    - Scheduling
+   - Animation steps
    - Strip delay
    - Full clean refresh afterwards
 3. **Test animated next page**
