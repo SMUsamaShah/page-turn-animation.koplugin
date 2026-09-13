@@ -157,14 +157,6 @@ function Menu.augment(PageTurnAnimation, radioItem)
                     help_text = _("Animate normal one-page taps, swipes and page-turn keys with the KPW4 reveal."),
                 },
                 self:pageTurnSettingsItem(),
-                {
-                    text = _("Test animated next page"),
-                    callback = function() self:turnPageForTest(1) end,
-                },
-                {
-                    text = _("Test animated previous page"),
-                    callback = function() self:turnPageForTest(-1) end,
-                },
             },
         }
     end
