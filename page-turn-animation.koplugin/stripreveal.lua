@@ -72,9 +72,8 @@ local function submitRegion(waveform, x, y, w, h)
 end
 
 -- Return how much of a horizontal band has been revealed (0..1).
--- Diagonal mode uses a temporary positional lead that disappears at the final
--- frame. Curved-bottom mode instead gives lower bands a genuinely higher
--- velocity so the bottom outruns the top and reaches the far edge earlier.
+-- Diagonal mode bulges most around the middle. Curved-bottom mode starts with
+-- a strong J-shaped lower lead and continuously straightens as the turn ends.
 local function shapedProgress(shape, progress, y_norm)
     if shape == "diagonal" then
         -- Bottom is ahead, top is behind. The edge remains approximately
@@ -82,13 +81,13 @@ local function shapedProgress(shape, progress, y_norm)
         local envelope = 4 * progress * (1 - progress)
         return clamp(progress + 0.22 * (y_norm - 0.5) * envelope, 0, 1)
     elseif shape == "bottom_curve" then
-        -- Keep the upper edge near the normal page-turn speed while increasing
-        -- velocity progressively toward the bottom. Fourth-power weighting
-        -- keeps most of the page nearly vertical and concentrates the extra
-        -- speed in the lower portion. The bottom runs up to 55% faster, reaches
-        -- the far side first, and stays there while the upper edge catches up.
-        local bottom_speed = 1 + 0.55 * (y_norm ^ 4)
-        return clamp(progress * bottom_speed, 0, 1)
+        -- Start with the lower edge substantially ahead, producing the J shape,
+        -- then let that positional lead decay continuously to zero. Fourth-power
+        -- vertical weighting keeps the upper page almost straight and bends only
+        -- the lower portion. At progress=1 every band is exactly aligned.
+        local bottom_weight = y_norm ^ 4
+        local remaining_lead = 0.32 * bottom_weight * (1 - progress)
+        return clamp(progress + remaining_lead, 0, 1)
     end
     return progress
 end
