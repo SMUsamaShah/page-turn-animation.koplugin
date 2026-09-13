@@ -84,9 +84,9 @@ local function shapedProgress(shape, progress, y_norm)
         -- Start with the lower edge substantially ahead, producing the J shape,
         -- then let that positional lead decay continuously to zero. Fourth-power
         -- vertical weighting keeps the upper page almost straight and bends only
-        -- the lower portion. At progress=1 every band is exactly aligned.
+        -- the lower portion. A stronger 45% maximum lead emphasizes the curl.
         local bottom_weight = y_norm ^ 4
-        local remaining_lead = 0.32 * bottom_weight * (1 - progress)
+        local remaining_lead = 0.45 * bottom_weight * (1 - progress)
         return clamp(progress + remaining_lead, 0, 1)
     end
     return progress
