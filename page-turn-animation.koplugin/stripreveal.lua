@@ -81,11 +81,14 @@ local function shapedProgress(shape, progress, y_norm)
         local envelope = 4 * progress * (1 - progress)
         return clamp(progress + 0.22 * (y_norm - 0.5) * envelope, 0, 1)
     elseif shape == "bottom_curve" then
-        -- A curved bottom-corner flip. Bottom bands accelerate early, then slow
-        -- relative to the top so the entire edge straightens before finishing.
+        -- Keep most of the edge close to vertical, then bend sharply through
+        -- the lower part of the page. The fourth-power weighting concentrates
+        -- the lead near the bottom while the stronger amplitude makes the
+        -- bottom corner sweep substantially farther ahead. The temporal
+        -- envelope still brings the entire edge back together at completion.
         local envelope = 4 * progress * (1 - progress)
-        local bottom_weight = y_norm * y_norm
-        return clamp(progress + 0.18 * bottom_weight * envelope, 0, 1)
+        local bottom_weight = y_norm ^ 4
+        return clamp(progress + 0.32 * bottom_weight * envelope, 0, 1)
     end
     return progress
 end
