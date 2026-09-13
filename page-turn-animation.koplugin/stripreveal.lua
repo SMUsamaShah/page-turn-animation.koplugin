@@ -93,18 +93,17 @@ local function shapedProgress(shape, progress, y_norm)
     return progress
 end
 
--- KPW4 reveal: six temporal steps. Straight mode exactly retains the original
--- full-height vertical strip behavior. Shaped modes divide the page into a few
--- horizontal bands in RAM, but still submit only ONE panel update per step: the
--- bounding rectangle containing every newly revealed band. This preserves the
--- cheap six-update display path instead of issuing dozens of E-Ink updates.
+-- KPW4 reveal with configurable temporal steps. Straight mode uses full-height
+-- vertical strips. Shaped modes divide the page into horizontal bands in RAM,
+-- but still submit only ONE panel update per temporal step: the bounding
+-- rectangle containing every newly revealed band.
 function StripReveal.run(old, new, direction, config)
     config = config or {}
     local ready, why = StripReveal.preflight(config)
     if not ready then error(why) end
 
     local sw, sh = Screen.bb:getWidth(), Screen.bb:getHeight()
-    local steps = 6
+    local steps = math.max(1, math.floor(tonumber(config.steps) or 6))
     local delay_ms = math.max(0, tonumber(config.delay_ms) or 40)
     local scheduler = config.scheduler == "fixed" and "fixed" or "free"
     local waveform = config.waveform or "auto"
