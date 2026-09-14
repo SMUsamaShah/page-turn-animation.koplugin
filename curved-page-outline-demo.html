@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Curved page outline lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #11161c;
+      --surface: #1a222b;
+      --surface-2: #202a34;
+      --border: #34414d;
+      --text: #edf2f5;
+      --muted: #aab7c2;
+      --model: #e3b97f;
+      --model-line: #ffd898;
+      --reference: #6dd6d2;
+      --reference-soft: rgba(109, 214, 210, .16);
+      --accent: #9db9ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 40px;
+    }
+
+    h1, h2, p { margin: 0; }
+
+    h1 {
+      font-size: clamp(1.35rem, 3vw, 1.9rem);
+      line-height: 1.15;
+      letter-spacing: -.02em;
+    }
+
+    h2 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .intro {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 20px;
+    }
+
+    .intro p, .caption, .help, .formula {
+      color: var(--muted);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) minmax(300px, 390px);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .stage, .controls {
+      min-width: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    .stage {
+      padding: 16px;
+    }
+
+    .stage-header, .control-header, .toolbar, .legend, .inline-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .stage-header, .control-header {
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .canvas-shell {
+      width: min(100%, 470px);
+      aspect-ratio: 202 / 270;
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid #4a5863;
+      border-radius: 8px;
+      background: #090c10;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .legend {
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 12px 0 4px;
+      color: var(--muted);
+      font-size: .85rem;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 3px;
+      border-radius: 2px;
+    }
+
+    .swatch.model { background: var(--model-line); }
+    .swatch.reference { background: var(--reference); }
+
+    .caption {
+      text-align: center;
+      font-size: .83rem;
+    }
+
+    .controls {
+      padding: 16px;
+    }
+
+    .controls > * + * { margin-top: 15px; }
+
+    .toolbar {
+      flex-wrap: wrap;
+    }
+
+    button, select, input {
+      font: inherit;
+    }
+
+    button, select {
+      min-height: 36px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface-2);
+      color: var(--text);
+    }
+
+    button {
+      padding: 6px 11px;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--accent); }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    #play { background: #334a72; border-color: #5d7fc0; }
+
+    .frame-readout {
+      margin-left: auto;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .field, .range-field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .field label, .range-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    output {
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    select { width: 100%; padding: 5px 8px; }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    details {
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .parameter-list {
+      display: grid;
+      gap: 11px;
+      margin-top: 12px;
+    }
+
+    .checks {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+      padding-top: 2px;
+    }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+    }
+
+    .check input { accent-color: var(--accent); }
+
+    .formula {
+      padding: 10px 11px;
+      border-left: 3px solid var(--reference);
+      background: var(--reference-soft);
+      font: .82rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    .help {
+      font-size: .8rem;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 760px) {
+      main { width: min(100% - 20px, 520px); padding-top: 18px; }
+      .workspace { grid-template-columns: 1fr; }
+      .canvas-shell { width: min(100%, 340px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="intro">
+      <h1>Curved page outline lab</h1>
+      <p>Compare a mathematical reveal outline with the four unique silhouettes from the hand-made reference GIF.</p>
+    </header>
+
+    <div class="workspace">
+      <section class="stage" aria-labelledby="stage-title">
+        <div class="stage-header">
+          <h2 id="stage-title">Outline preview</h2>
+          <span id="reference-readout" class="caption" aria-live="polite">reference frame 1 / 4</span>
+        </div>
+        <div class="canvas-shell">
+          <canvas id="preview" width="202" height="270" aria-describedby="canvas-description"></canvas>
+        </div>
+        <p id="canvas-description" class="sr-only">The filled amber shape is the mathematical page outline. The dashed cyan line is the hand-drawn reference outline.</p>
+        <div class="legend" aria-hidden="true">
+          <span class="legend-item"><span class="swatch model"></span>math model</span>
+          <span class="legend-item"><span class="swatch reference"></span>hand-drawn reference</span>
+        </div>
+        <p class="caption">The reference is aligned by its measured top-edge width: 91%, 76%, 46%, then 20%.</p>
+      </section>
+
+      <section class="controls" aria-labelledby="controls-title">
+        <div class="control-header">
+          <h2 id="controls-title">Controls</h2>
+          <span id="status" class="help" aria-live="polite">paused</span>
+        </div>
+
+        <div class="toolbar" aria-label="Animation controls">
+          <button id="play" type="button">Play</button>
+          <button id="previous" type="button" aria-label="Previous step">◀</button>
+          <button id="next" type="button" aria-label="Next step">▶</button>
+          <button id="reset" type="button">Reset</button>
+          <span id="frame-readout" class="frame-readout" aria-live="polite">step 1 / 5 · 9%</span>
+        </div>
+
+        <div class="field">
+          <label for="preset">Preset</label>
+          <select id="preset">
+            <option value="reference">Reference-like hybrid</option>
+            <option value="bottom_curve">Existing bottom_curve</option>
+            <option value="bottom_curve2">Existing bottom_curve2</option>
+            <option value="bottom_curve3">Existing bottom_curve3</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+
+        <div class="range-field">
+          <div class="range-label"><label for="progress">Turn progress</label><output id="progress-value" for="progress">9%</output></div>
+          <input id="progress" type="range" min="0" max="100" step="1" value="9">
+        </div>
+
+        <div class="range-field">
+          <div class="range-label"><label for="steps">Visible animation steps</label><output id="steps-value" for="steps">5</output></div>
+          <input id="steps" type="range" min="3" max="24" step="1" value="5">
+        </div>
+
+        <div class="range-field">
+          <div class="range-label"><label for="duration">Loop duration</label><output id="duration-value" for="duration">480 ms</output></div>
+          <input id="duration" type="range" min="120" max="1200" step="20" value="480">
+        </div>
+
+        <div class="checks">
+          <label class="check"><input id="quantize" type="checkbox"> quantise to steps</label>
+          <label class="check"><input id="show-reference" type="checkbox" checked> show reference</label>
+          <label class="check"><input id="show-grid" type="checkbox" checked> show guides</label>
+          <label class="check"><input id="fill-model" type="checkbox" checked> fill model</label>
+        </div>
+
+        <details open>
+          <summary>Mathematical edge</summary>
+          <div class="parameter-list">
+            <div class="range-field"><div class="range-label"><label for="lead-start">Start lead A</label><output id="lead-start-value" for="lead-start">0.080</output></div><input id="lead-start" type="range" min="0" max="0.8" step="0.005" value="0.08"></div>
+            <div class="range-field"><div class="range-label"><label for="edge-power">Vertical power P</label><output id="edge-power-value" for="edge-power">0.80</output></div><input id="edge-power" type="range" min="0.25" max="10" step="0.05" value="0.8"></div>
+            <div class="range-field"><div class="range-label"><label for="lead-falloff">Start falloff F</label><output id="lead-falloff-value" for="lead-falloff">2.00</output></div><input id="lead-falloff" type="range" min="0.25" max="5" step="0.05" value="2"></div>
+            <div class="range-field"><div class="range-label"><label for="mid-bulge">Middle bulge B</label><output id="mid-bulge-value" for="mid-bulge">0.200</output></div><input id="mid-bulge" type="range" min="0" max="0.8" step="0.005" value="0.2"></div>
+            <div class="range-field"><div class="range-label"><label for="mid-power">Middle power M</label><output id="mid-power-value" for="mid-power">3.00</output></div><input id="mid-power" type="range" min="0.5" max="6" step="0.1" value="3"></div>
+            <div class="range-field"><div class="range-label"><label for="progress-power">Progress power</label><output id="progress-power-value" for="progress-power">1.00</output></div><input id="progress-power" type="range" min="0.5" max="2.5" step="0.05" value="1"></div>
+          </div>
+          <p class="formula">q = clamp(p + A·y<sup>P</sup>·(1−p)<sup>F</sup> + B·y<sup>P</sup>·(4p(1−p))<sup>M</sup>)<br>x<sub>right</sub> = 202·(1 − q)</p>
+          <p class="help">This is the same family as the existing Lua curved presets. At each vertical position y, q says how much of that band has been revealed.</p>
+        </details>
+
+        <details>
+          <summary>Page contour</summary>
+          <div class="parameter-list">
+            <div class="range-field"><div class="range-label"><label for="top-margin">Top corner height</label><output id="top-margin-value" for="top-margin">0.067</output></div><input id="top-margin" type="range" min="0" max="0.14" step="0.001" value="0.067"></div>
+            <div class="range-field"><div class="range-label"><label for="top-dip">Top curl depth</label><output id="top-dip-value" for="top-dip">0.060</output></div><input id="top-dip" type="range" min="0" max="0.14" step="0.001" value="0.06"></div>
+            <div class="range-field"><div class="range-label"><label for="bottom-margin">Bottom corner height</label><output id="bottom-margin-value" for="bottom-margin">0.065</output></div><input id="bottom-margin" type="range" min="0" max="0.14" step="0.001" value="0.065"></div>
+            <div class="range-field"><div class="range-label"><label for="bottom-swell">Bottom swell</label><output id="bottom-swell-value" for="bottom-swell">0.035</output></div><input id="bottom-swell" type="range" min="0" max="0.14" step="0.001" value="0.035"></div>
+            <div class="range-field"><div class="range-label"><label for="bottom-tilt">Bottom edge tilt</label><output id="bottom-tilt-value" for="bottom-tilt">0.045</output></div><input id="bottom-tilt" type="range" min="0" max="0.14" step="0.001" value="0.045"></div>
+            <div class="range-field"><div class="range-label"><label for="top-peak">Top curl position</label><output id="top-peak-value" for="top-peak">0.30</output></div><input id="top-peak" type="range" min="0.1" max="0.9" step="0.01" value="0.3"></div>
+            <div class="range-field"><div class="range-label"><label for="bottom-peak">Bottom curl position</label><output id="bottom-peak-value" for="bottom-peak">0.35</output></div><input id="bottom-peak" type="range" min="0.1" max="0.9" step="0.01" value="0.35"></div>
+            <div class="range-field"><div class="range-label"><label for="corner-collapse">Corner collapse point</label><output id="corner-collapse-value" for="corner-collapse">0.70</output></div><input id="corner-collapse" type="range" min="0.4" max="0.9" step="0.01" value="0.7"></div>
+          </div>
+          <p class="help">These terms only shape the top and bottom silhouette. Set them to zero to see the simpler full-height strip used by the plugin’s reveal renderer.</p>
+        </details>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    "use strict";
+
+    const WIDTH = 202;
+    const HEIGHT = 270;
+
+    // Four unique silhouettes from frames 0, 2, 4 and 6 of the supplied GIF.
+    // Each row is [source-y, left-x, right-x], sampled every 3 pixels.
+    const REFERENCE = [
+      [[9,50,64],[12,15,96],[15,7,116],[18,1,183],[21,1,183],[24,1,182],[27,1,182],[30,1,182],[33,1,181],[36,1,181],[39,1,181],[42,1,180],[45,1,180],[48,1,180],[51,1,180],[54,1,180],[57,1,179],[60,1,179],[63,1,179],[66,1,179],[69,1,178],[72,1,178],[75,1,178],[78,1,178],[81,1,178],[84,1,177],[87,1,177],[90,1,177],[93,1,177],[96,1,177],[99,1,177],[102,1,177],[105,1,176],[108,1,176],[111,1,176],[114,1,176],[117,1,176],[120,1,176],[123,1,175],[126,1,175],[129,1,175],[132,1,175],[135,1,175],[138,1,174],[141,1,174],[144,1,174],[147,1,174],[150,1,173],[153,1,173],[156,1,173],[159,1,173],[162,1,172],[165,1,172],[168,1,172],[171,1,172],[174,1,172],[177,1,172],[180,1,171],[183,1,171],[186,1,171],[189,1,171],[192,1,171],[195,1,171],[198,1,170],[201,1,170],[204,1,170],[207,1,170],[210,1,170],[213,1,170],[216,1,170],[219,1,170],[222,1,169],[225,1,169],[228,1,169],[231,1,169],[234,1,169],[237,1,169],[240,1,169],[243,1,165],[246,1,156],[249,1,145],[252,4,132],[255,15,120],[258,32,102],[261,60,75]],
+      [[2,43,52],[3,36,60],[6,17,78],[9,7,88],[12,4,97],[15,2,114],[18,1,153],[21,1,152],[24,1,151],[27,1,151],[30,1,150],[33,1,150],[36,1,149],[39,1,149],[42,1,149],[45,1,148],[48,1,148],[51,1,147],[54,1,147],[57,1,147],[60,1,146],[63,1,145],[66,1,145],[69,0,145],[72,0,144],[75,0,144],[78,0,143],[81,0,143],[84,0,142],[87,0,142],[90,0,141],[93,0,141],[96,0,141],[99,0,140],[102,0,140],[105,0,140],[108,0,139],[111,0,139],[114,0,139],[117,0,138],[120,0,138],[123,0,138],[126,0,137],[129,0,137],[132,0,136],[135,0,136],[138,0,136],[141,0,136],[144,0,136],[147,0,136],[150,0,135],[153,0,135],[156,0,135],[159,0,135],[162,0,134],[165,0,134],[168,0,134],[171,0,134],[174,0,133],[177,0,133],[180,0,133],[183,0,133],[186,1,133],[189,1,133],[192,1,133],[195,1,133],[198,1,133],[201,1,132],[204,1,132],[207,1,132],[210,1,132],[213,1,132],[216,1,131],[219,1,131],[222,1,131],[225,1,131],[228,1,131],[231,1,131],[234,1,131],[237,1,130],[240,1,130],[243,1,130],[246,1,130],[249,1,120],[252,1,112],[255,4,105],[258,9,95],[261,15,82],[264,24,70],[266,31,58]],
+      [[1,27,40],[3,16,55],[6,7,65],[9,4,74],[12,3,80],[15,2,89],[18,1,92],[21,1,91],[24,0,90],[27,0,89],[30,0,89],[33,0,88],[36,0,87],[39,0,86],[42,0,85],[45,0,84],[48,0,84],[51,0,83],[54,0,82],[57,0,81],[60,0,80],[63,0,80],[66,0,79],[69,0,78],[72,0,78],[75,0,77],[78,0,77],[81,0,76],[84,0,75],[87,0,74],[90,0,74],[93,0,73],[96,0,73],[99,0,72],[102,0,72],[105,0,71],[108,0,70],[111,0,70],[114,0,69],[117,0,69],[120,0,68],[123,0,68],[126,0,67],[129,0,67],[132,0,66],[135,0,66],[138,0,66],[141,0,65],[144,0,65],[147,0,64],[150,0,64],[153,0,64],[156,0,63],[159,0,63],[162,0,62],[165,0,62],[168,0,62],[171,0,61],[174,0,61],[177,0,61],[180,0,60],[183,0,60],[186,0,59],[189,0,59],[192,0,58],[195,0,58],[198,0,57],[201,0,57],[204,0,57],[207,0,56],[210,0,56],[213,0,55],[216,0,55],[219,0,54],[222,0,54],[225,0,54],[228,0,54],[231,0,53],[234,0,53],[237,0,53],[240,0,52],[243,0,52],[246,0,51],[249,0,51],[252,1,50],[255,1,50],[258,2,49],[261,4,49],[264,10,40],[266,20,33]],
+      [[0,24,40],[3,1,40],[6,0,40],[9,0,40],[12,0,40],[15,0,39],[18,0,39],[21,0,39],[24,0,38],[27,0,38],[30,0,37],[33,0,37],[36,0,37],[39,0,36],[42,0,36],[45,0,35],[48,0,35],[51,0,35],[54,0,35],[57,0,34],[60,0,34],[63,0,34],[66,0,33],[69,0,33],[72,0,33],[75,0,33],[78,0,33],[81,0,32],[84,0,32],[87,0,32],[90,0,32],[93,0,32],[96,0,31],[99,0,31],[102,0,31],[105,0,31],[108,0,31],[111,0,31],[114,0,31],[117,0,31],[120,0,31],[123,0,31],[126,0,30],[129,0,30],[132,0,30],[135,0,30],[138,0,30],[141,0,30],[144,0,30],[147,0,30],[150,0,30],[153,0,30],[156,0,30],[159,0,29],[162,0,29],[165,0,29],[168,0,29],[171,0,29],[174,0,29],[177,0,29],[180,0,29],[183,0,29],[186,0,29],[189,0,29],[192,0,29],[195,0,28],[198,0,28],[201,0,28],[204,0,28],[207,0,28],[210,0,28],[213,0,28],[216,0,28],[219,0,28],[222,0,28],[225,0,28],[228,0,28],[231,0,28],[234,0,29],[237,0,29],[240,0,29],[243,0,29],[246,0,29],[249,0,29],[252,0,29],[255,0,29],[258,0,29],[261,0,29],[264,0,29],[267,3,29],[269,18,29]]
+    ];
+
+    const REFERENCE_PROGRESS = [0.094, 0.243, 0.545, 0.802];
+
+    const PRESETS = {
+      reference: {
+        leadStart: 0.08, edgePower: 0.80, leadFalloff: 2.00,
+        midBulge: 0.20, midPower: 3.00, progressPower: 1.00,
+        topMargin: 0.067, topDip: 0.060, bottomMargin: 0.065,
+        bottomSwell: 0.035, bottomTilt: 0.045, topPeak: 0.30,
+        bottomPeak: 0.35, cornerCollapse: 0.70
+      },
+      bottom_curve: {
+        leadStart: 0.45, edgePower: 4.00, leadFalloff: 1.00,
+        midBulge: 0.00, midPower: 1.00, progressPower: 1.00,
+        topMargin: 0.067, topDip: 0.060, bottomMargin: 0.065,
+        bottomSwell: 0.035, bottomTilt: 0.045, topPeak: 0.30,
+        bottomPeak: 0.35, cornerCollapse: 0.70
+      },
+      bottom_curve2: {
+        leadStart: 0.63, edgePower: 8.00, leadFalloff: 1.00,
+        midBulge: 0.00, midPower: 1.00, progressPower: 1.00,
+        topMargin: 0.067, topDip: 0.060, bottomMargin: 0.065,
+        bottomSwell: 0.035, bottomTilt: 0.045, topPeak: 0.30,
+        bottomPeak: 0.35, cornerCollapse: 0.70
+      },
+      bottom_curve3: {
+        leadStart: 0.41, edgePower: 8.00, leadFalloff: 3.00,
+        midBulge: 0.18, midPower: 1.00, progressPower: 1.00,
+        topMargin: 0.067, topDip: 0.060, bottomMargin: 0.065,
+        bottomSwell: 0.035, bottomTilt: 0.045, topPeak: 0.30,
+        bottomPeak: 0.35, cornerCollapse: 0.70
+      }
+    };
+
+    const state = {
+      preset: "reference",
+      progress: 0.094,
+      steps: 5,
+      duration: 480,
+      quantize: false,
+      showReference: true,
+      showGrid: true,
+      fillModel: true,
+      playing: false,
+      animationStart: 0,
+      parameters: { ...PRESETS.reference }
+    };
+
+    const canvas = document.getElementById("preview");
+    const ctx = canvas.getContext("2d");
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const $ = id => document.getElementById(id);
+    const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
+    const smoothstep = value => {
+      const t = clamp(value, 0, 1);
+      return t * t * (3 - 2 * t);
+    };
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    function arch(u, peak) {
+      const p = clamp(peak, 0.05, 0.95);
+      if (u <= p) return Math.sin((u / p) * Math.PI / 2);
+      return Math.sin(((1 - u) / (1 - p)) * Math.PI / 2);
+    }
+
+    function effectiveProgress() {
+      if (!state.quantize) return state.progress;
+      return Math.round(state.progress * state.steps) / state.steps;
+    }
+
+    function referenceIndex(progress) {
+      if (progress > 0.901) return -1;
+      if (progress < (REFERENCE_PROGRESS[0] + REFERENCE_PROGRESS[1]) / 2) return 0;
+      if (progress < (REFERENCE_PROGRESS[1] + REFERENCE_PROGRESS[2]) / 2) return 1;
+      if (progress < (REFERENCE_PROGRESS[2] + REFERENCE_PROGRESS[3]) / 2) return 2;
+      return 3;
+    }
+
+    function revealProgress(progress, yNorm) {
+      const p = Math.pow(clamp(progress, 0, 1), state.parameters.progressPower);
+      const y = clamp(yNorm, 0, 1);
+      const vertical = Math.pow(y, state.parameters.edgePower);
+      const startLead = state.parameters.leadStart
+        * vertical
+        * Math.pow(1 - p, state.parameters.leadFalloff);
+      const middleLead = state.parameters.midBulge
+        * vertical
+        * Math.pow(4 * p * (1 - p), state.parameters.midPower);
+      return clamp(p + startLead + middleLead, 0, 1);
+    }
+
+    function rightEdgeX(yNorm, progress) {
+      return WIDTH * (1 - revealProgress(progress, yNorm));
+    }
+
+    function cornerVisibility(progress) {
+      const start = state.parameters.cornerCollapse;
+      return 1 - smoothstep((progress - start) / (1 - start));
+    }
+
+    function topEdgeY(u, progress) {
+      const corner = cornerVisibility(progress);
+      const base = state.parameters.topMargin * corner;
+      const dipGrowth = 0.45 + 0.55 * smoothstep(progress / 0.45);
+      const dip = state.parameters.topDip * dipGrowth * corner;
+      return HEIGHT * clamp(base - dip * arch(u, state.parameters.topPeak), 0, 1);
+    }
+
+    function bottomEdgeY(u, progress) {
+      const corner = cornerVisibility(progress);
+      const base = 1 - state.parameters.bottomMargin * corner;
+      const swellGrowth = 0.70 + 0.30 * smoothstep(progress / 0.50);
+      const swell = state.parameters.bottomSwell * swellGrowth * corner;
+      const tilt = state.parameters.bottomTilt * Math.pow(1 - progress, 1.5) * corner;
+      return HEIGHT * clamp(base + swell * arch(u, state.parameters.bottomPeak) - tilt * u, 0, 1);
+    }
+
+    function modelPath(progress) {
+      if (progress >= 0.9995) return [];
+
+      const topAtRight = topEdgeY(1, progress) / HEIGHT;
+      const bottomAtRight = bottomEdgeY(1, progress) / HEIGHT;
+      const topX = rightEdgeX(topAtRight, progress);
+      const bottomX = rightEdgeX(bottomAtRight, progress);
+      if (topX < 0.5 && bottomX < 0.5) return [];
+
+      const points = [];
+      const topSamples = 64;
+      const sideSamples = 120;
+
+      for (let i = 0; i <= topSamples; i += 1) {
+        const u = i / topSamples;
+        points.push([topX * u, topEdgeY(u, progress)]);
+      }
+
+      for (let i = 1; i <= sideSamples; i += 1) {
+        const t = i / sideSamples;
+        const y = lerp(topEdgeY(1, progress), bottomEdgeY(1, progress), t);
+        points.push([rightEdgeX(y / HEIGHT, progress), y]);
+      }
+
+      const bottomSamples = 64;
+      for (let i = 1; i <= bottomSamples; i += 1) {
+        const u = 1 - i / bottomSamples;
+        points.push([bottomX * u, bottomEdgeY(u, progress)]);
+      }
+
+      for (let i = 1; i <= sideSamples; i += 1) {
+        const t = i / sideSamples;
+        points.push([0, lerp(bottomEdgeY(0, progress), topEdgeY(0, progress), t)]);
+      }
+      return points;
+    }
+
+    function referencePath(frame) {
+      if (frame < 0) return [];
+      const rows = REFERENCE[frame];
+      const points = rows.map(row => [row[1], row[0]]);
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        points.push([rows[i][2], rows[i][0]]);
+      }
+      return points;
+    }
+
+    function drawPath(points, close, fill, stroke, lineWidth, dash) {
+      if (!points.length) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i][0], points[i][1]);
+      if (close) ctx.closePath();
+      if (fill) {
+        ctx.fillStyle = fill;
+        ctx.fill();
+      }
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = lineWidth;
+        ctx.setLineDash(dash || []);
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.strokeStyle = "rgba(178, 196, 212, .13)";
+      ctx.lineWidth = 0.6;
+      ctx.setLineDash([2, 3]);
+      for (let x = 0; x <= WIDTH; x += 20) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, HEIGHT); ctx.stroke();
+      }
+      for (let y = 0; y <= HEIGHT; y += 20) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WIDTH, y); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function draw() {
+      const progress = effectiveProgress();
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillStyle = "#090c10";
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      if (state.showGrid) drawGrid();
+
+      const model = modelPath(progress);
+      if (model.length) {
+        drawPath(model, true, state.fillModel ? "rgba(227, 185, 127, .28)" : null, "#ffd898", 1.7);
+      }
+
+      const frame = referenceIndex(progress);
+      if (state.showReference && frame >= 0) {
+        drawPath(referencePath(frame), true, null, "#6dd6d2", 1.2, [4, 3]);
+      }
+
+      const rawPercent = Math.round(progress * 100);
+      $("progress").value = String(Math.round(state.progress * 100));
+      $("progress-value").textContent = `${rawPercent}%`;
+      $("steps-value").textContent = String(state.steps);
+      $("duration-value").textContent = `${state.duration} ms`;
+      const stepNumber = Math.round(progress * state.steps) + 1;
+      $("frame-readout").textContent = `step ${Math.min(stepNumber, state.steps + 1)} / ${state.steps + 1} · ${rawPercent}%`;
+      $("reference-readout").textContent = frame < 0 ? "reference blank frame" : `reference frame ${frame + 1} / 4`;
+      $("status").textContent = state.playing ? "playing" : "paused";
+    }
+
+    const parameterBindings = [
+      ["lead-start", "leadStart", v => v.toFixed(3)],
+      ["edge-power", "edgePower", v => v.toFixed(2)],
+      ["lead-falloff", "leadFalloff", v => v.toFixed(2)],
+      ["mid-bulge", "midBulge", v => v.toFixed(3)],
+      ["mid-power", "midPower", v => v.toFixed(2)],
+      ["progress-power", "progressPower", v => v.toFixed(2)],
+      ["top-margin", "topMargin", v => v.toFixed(3)],
+      ["top-dip", "topDip", v => v.toFixed(3)],
+      ["bottom-margin", "bottomMargin", v => v.toFixed(3)],
+      ["bottom-swell", "bottomSwell", v => v.toFixed(3)],
+      ["bottom-tilt", "bottomTilt", v => v.toFixed(3)],
+      ["top-peak", "topPeak", v => v.toFixed(2)],
+      ["bottom-peak", "bottomPeak", v => v.toFixed(2)],
+      ["corner-collapse", "cornerCollapse", v => v.toFixed(2)]
+    ];
+
+    function markCustom() {
+      state.preset = "custom";
+      $("preset").value = "custom";
+    }
+
+    for (const [id, key, format] of parameterBindings) {
+      const input = $(id);
+      const output = $(`${id}-value`);
+      input.addEventListener("input", () => {
+        state.parameters[key] = Number(input.value);
+        output.textContent = format(state.parameters[key]);
+        markCustom();
+        draw();
+      });
+    }
+
+    function loadPreset(name) {
+      state.preset = name;
+      if (name !== "custom") state.parameters = { ...PRESETS[name] };
+      for (const [id, key, format] of parameterBindings) {
+        $(id).value = String(state.parameters[key]);
+        $(`${id}-value`).textContent = format(state.parameters[key]);
+      }
+      draw();
+    }
+
+    $("preset").addEventListener("change", event => loadPreset(event.target.value));
+
+    $("progress").addEventListener("input", event => {
+      state.progress = Number(event.target.value) / 100;
+      state.playing = false;
+      draw();
+    });
+
+    $("steps").addEventListener("input", event => {
+      state.steps = Number(event.target.value);
+      draw();
+    });
+
+    $("duration").addEventListener("input", event => {
+      state.duration = Number(event.target.value);
+      draw();
+    });
+
+    $("quantize").addEventListener("change", event => { state.quantize = event.target.checked; draw(); });
+    $("show-reference").addEventListener("change", event => { state.showReference = event.target.checked; draw(); });
+    $("show-grid").addEventListener("change", event => { state.showGrid = event.target.checked; draw(); });
+    $("fill-model").addEventListener("change", event => { state.fillModel = event.target.checked; draw(); });
+
+    function moveStep(amount) {
+      state.playing = false;
+      const current = Math.round(effectiveProgress() * state.steps);
+      state.progress = clamp((current + amount) / state.steps, 0, 1);
+      draw();
+    }
+
+    $("previous").addEventListener("click", () => moveStep(-1));
+    $("next").addEventListener("click", () => moveStep(1));
+    $("reset").addEventListener("click", () => {
+      state.playing = false;
+      state.progress = REFERENCE_PROGRESS[0];
+      draw();
+    });
+
+    function animationTick(now) {
+      if (!state.playing) return;
+      const elapsed = now - state.animationStart;
+      const raw = (elapsed % state.duration) / state.duration;
+      state.progress = raw;
+      draw();
+      requestAnimationFrame(animationTick);
+    }
+
+    $("play").addEventListener("click", () => {
+      if (prefersReducedMotion) {
+        state.playing = false;
+        state.progress = state.progress >= 0.999 ? 0 : 1;
+        draw();
+        return;
+      }
+      state.playing = !state.playing;
+      if (state.playing) {
+        state.animationStart = performance.now() - state.progress * state.duration;
+        requestAnimationFrame(animationTick);
+      }
+      $("play").textContent = state.playing ? "Pause" : "Play";
+      draw();
+    });
+
+    window.addEventListener("keydown", event => {
+      if (event.target.matches("input, select, button")) return;
+      if (event.key === "ArrowLeft") moveStep(-1);
+      if (event.key === "ArrowRight") moveStep(1);
+      if (event.key === " ") { event.preventDefault(); $("play").click(); }
+    });
+
+    function resizeCanvas() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.round(WIDTH * dpr);
+      canvas.height = Math.round(HEIGHT * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+  </script>
+</body>
+</html>

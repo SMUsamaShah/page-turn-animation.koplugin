@@ -83,6 +83,7 @@ function StripReveal.preflight(config)
             and shape ~= "bottom_curve"
             and shape ~= "bottom_curve2"
             and shape ~= "bottom_curve3"
+            and shape ~= "reference_hybrid"
             and shape ~= "page_flip"
             and shape ~= "page_flip_exact" then
         return nil, "Unknown reveal shape: " .. tostring(shape)
@@ -182,6 +183,16 @@ local function shapedProgress(shape, progress, y_norm)
         local start_lead = 0.41 * bottom_weight * ((1 - progress) ^ 3)
         local bulge = 0.18 * bottom_weight * (4 * progress * (1 - progress))
         return clamp(progress + start_lead + bulge, 0, 1)
+    elseif shape == "reference_hybrid" then
+        -- Mathematical approximation of the supplied hand-made page outline.
+        -- It combines a small early lead with a stronger middle-turn bulge;
+        -- both use a soft vertical profile instead of the existing bottom-only
+        -- fourth/eighth-power profiles. The coefficients match the demo.
+        local edge_weight = y_norm ^ 0.8
+        local start_lead = 0.08 * edge_weight * ((1 - progress) ^ 2)
+        local middle_bulge = 0.20 * edge_weight
+            * ((4 * progress * (1 - progress)) ^ 3)
+        return clamp(progress + start_lead + middle_bulge, 0, 1)
     elseif shape == "page_flip" then
         -- The generic reveal renderer expects 0 = all old page and 1 = all new
         -- page. The traced GIF stores the opposite quantity: the X coordinate
