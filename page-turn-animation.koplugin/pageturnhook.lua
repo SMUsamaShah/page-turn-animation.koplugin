@@ -41,25 +41,29 @@ local function clearArm(state)
     state.armed = false
 end
 
-local function cancelAnimation(state, reason)
-    local animation = state.animation
-    if not animation then return end
-
-    animation.cancelled = true
-    if animation.action then
-        pcall(function() UIManager:unschedule(animation.action) end)
+local function isAnimationActive(state, animation)
+    for _, candidate in ipairs(state.animations) do
+        if candidate == animation then return true end
     end
-    state.animation = nil
+    return false
+end
 
-    -- The scheduled closure may still exist in a local task frame even after
-    -- unschedule. Clearing its buffers makes a stale callback harmless.
-    freeBuffer(animation.old)
-    freeBuffer(animation.new)
-    animation.old = nil
-    animation.new = nil
+local function cancelAnimations(state, reason)
+    for _, animation in ipairs(state.animations) do
+        animation.cancelled = true
+        if animation.action then
+            pcall(function() UIManager:unschedule(animation.action) end)
+        end
+        freeBuffer(animation.new)
+        animation.new = nil
+    end
+    state.animations = {}
+    state.latest_animation = nil
+    freeBuffer(state.base_bb)
+    state.base_bb = nil
 
     if reason then
-        logger.info("PageTurnAnimation: cancelled animation (" .. reason .. ")")
+        logger.info("PageTurnAnimation: cancelled animation stack (" .. reason .. ")")
     end
 end
 
@@ -86,23 +90,62 @@ local function settle(screen, config)
     if screen.refreshWaitForLast then screen:refreshWaitForLast() end
 end
 
-local function finishAnimation(state, animation, result)
-    if state.animation ~= animation or animation.cancelled then return end
+local function submitRegion(waveform, x, y, w, h)
+    if not x or not y or not w or not h or w <= 0 or h <= 0 then return end
+    if waveform == "a2" then
+        Screen:refreshA2(x, y, w, h)
+    elseif waveform == "du" then
+        Screen:refreshFast(x, y, w, h)
+    else
+        Screen:refreshUI(x, y, w, h)
+    end
+end
 
-    state.animation = nil
-    state.suppress = false
+-- The first page turn owns the bottom of this stack. Every later page turn is
+-- a new-page layer above it. Rendering from the bottom on every callback is
+-- what allows an older turn to continue changing underneath a newer turn.
+local function renderStack(state, Renderer)
+    if not state.base_bb then return end
+
+    restoreBuffer(Screen, state.base_bb)
+    for _, animation in ipairs(state.animations) do
+        if not animation.cancelled then
+            Renderer.render(animation, Screen.bb)
+        end
+    end
+end
+
+-- A completed layer is a full page. It can become the new bottom layer and its
+-- predecessor can be released, without changing the composited image.
+local function collapseCompletedPrefix(state)
+    while state.animations[1] and state.animations[1].done do
+        local animation = table.remove(state.animations, 1)
+        local old_base = state.base_bb
+        state.base_bb = animation.new
+        animation.new = nil
+        freeBuffer(old_base)
+    end
+end
+
+local function finishSequence(state)
+    if #state.animations ~= 0 or not state.base_bb then return end
+
     local owner = state.owner
-    local old_bb, new_bb = animation.old, animation.new
-    animation.old = nil
-    animation.new = nil
+    local final_bb = state.base_bb
+    local latest = state.latest_animation
+    local config = latest and latest.config or {}
+    local result = latest and latest.result or nil
+    state.base_bb = nil
+    state.latest_animation = nil
+    state.suppress = false
 
     -- Async frames run outside UIManager's paint pass. Re-enter the framebuffer
     -- paint bracket so devices with per-paint rotation bookkeeping stay valid.
     state.bypass = true
     local ok, why = pcall(function()
         Screen:beforePaint()
-        restoreBuffer(Screen, new_bb)
-        settle(Screen, animation.config or {})
+        restoreBuffer(Screen, final_bb)
+        settle(Screen, config)
         Screen:afterPaint()
     end)
     state.bypass = false
@@ -110,58 +153,78 @@ local function finishAnimation(state, animation, result)
     if not ok then
         logger.warn("PageTurnAnimation: final settle failed:", why)
     end
-    if owner then owner._last_page_turn_result = result end
-
-    freeBuffer(old_bb)
-    freeBuffer(new_bb)
+    if owner and result then owner._last_page_turn_result = result end
+    freeBuffer(final_bb)
 end
 
 local function abortAnimation(state, animation, reason)
-    if state.animation ~= animation then return end
+    if not isAnimationActive(state, animation) then return end
 
     logger.warn("PageTurnAnimation: page-turn animation failed:", reason)
-    state.animation = nil
-    state.suppress = false
-    animation.cancelled = true
-    local old_bb, new_bb = animation.old, animation.new
-    animation.old = nil
-    animation.new = nil
 
-    -- The initial KOReader refresh was intercepted, so put the destination on
-    -- the panel before giving control back to ordinary UI refreshes.
-    if new_bb then
+    -- Preserve the newest rendered page as a safe recovery target before the
+    -- stack is released. This is preferable to leaving a partial composite in
+    -- the framebuffer if a renderer or device call fails.
+    local recovery
+    if state.latest_animation and state.latest_animation.new then
+        recovery = state.latest_animation.new:copy()
+    elseif animation.new then
+        recovery = animation.new:copy()
+    end
+
+    cancelAnimations(state, "renderer failure")
+    clearArm(state)
+    state.suppress = false
+
+    if recovery then
         state.bypass = true
         local ok, why = pcall(function()
             Screen:beforePaint()
-            restoreBuffer(Screen, new_bb)
-            settle(Screen, animation.config or {})
+            restoreBuffer(Screen, recovery)
+            settle(Screen, {})
             Screen:afterPaint()
         end)
         state.bypass = false
         if not ok then
             logger.warn("PageTurnAnimation: recovery settle failed:", why)
         end
+        freeBuffer(recovery)
     end
-
-    freeBuffer(old_bb)
-    freeBuffer(new_bb)
 end
 
 local function scheduleAnimationStep(state, animation, delay)
-    if state.animation ~= animation or animation.cancelled then return end
+    if not isAnimationActive(state, animation) or animation.cancelled then return end
     delay = tonumber(delay) or 0
     if delay < MIN_ASYNC_DELAY then delay = MIN_ASYNC_DELAY end
     UIManager:scheduleIn(delay, animation.action)
 end
 
 local function runAnimationStep(state, Renderer, animation)
-    if state.animation ~= animation or animation.cancelled then return end
+    if not isAnimationActive(state, animation) or animation.cancelled then return end
 
-    local ok, frame
+    local frame
     state.bypass = true
     local bracket_ok, bracket_error = pcall(function()
         Screen:beforePaint()
-        ok, frame = pcall(Renderer.step, animation)
+
+        local ok, step_frame = pcall(Renderer.step, animation)
+        if not ok then error(step_frame) end
+        if type(step_frame) ~= "table" then
+            error("renderer returned no frame state")
+        end
+        frame = step_frame
+
+        renderStack(state, Renderer)
+        if frame.dirty then
+            submitRegion(
+                animation.waveform,
+                frame.dirty.x,
+                frame.dirty.y,
+                frame.dirty.w,
+                frame.dirty.h
+            )
+        end
+
         Screen:afterPaint()
     end)
     state.bypass = false
@@ -170,18 +233,16 @@ local function runAnimationStep(state, Renderer, animation)
         abortAnimation(state, animation, bracket_error)
         return
     end
-    if not ok then
-        abortAnimation(state, animation, frame)
-        return
-    end
-    if state.animation ~= animation or animation.cancelled then return end
-    if type(frame) ~= "table" then
-        abortAnimation(state, animation, "renderer returned no frame state")
-        return
-    end
+    if not isAnimationActive(state, animation) or animation.cancelled then return end
 
     if frame.done then
-        finishAnimation(state, animation, frame.result)
+        animation.done = true
+        animation.result = frame.result
+        collapseCompletedPrefix(state)
+
+        if #state.animations == 0 then
+            finishSequence(state)
+        end
     else
         scheduleAnimationStep(state, animation, frame.delay)
     end
@@ -193,6 +254,10 @@ function Hook.augment(PageTurnAnimation, Renderer)
         state = {
             originals = {},
             owner = nil,
+            -- A first turn's old page becomes the stack base. Later turns only
+            -- need their new-page buffers, which keeps overlap compositing
+            -- cheaper than keeping one old snapshot per animation.
+            base_bb = nil,
             old_bb = nil,
             direction = nil,
             armed = false,
@@ -200,7 +265,8 @@ function Hook.augment(PageTurnAnimation, Renderer)
             -- It is cleared by afterPaint; animation callbacks use bypass.
             suppress = false,
             bypass = false,
-            animation = nil,
+            animations = {},
+            latest_animation = nil,
         }
         Screen._pageturnanimation_page_turn_hook = state
 
@@ -210,19 +276,21 @@ function Hook.augment(PageTurnAnimation, Renderer)
             local owner = state.owner
             local enabled = owner and (owner.auto_page_turn or owner._pageturnanimation_force_once)
             if first_paint and not state.bypass and enabled and owner._pageturnanimation_pending_direction then
-                -- This snapshot is the currently visible composite. If a turn
-                -- is already in progress, rebasing from it makes the next
-                -- turn look like a fresh page layered over the partial turn.
-                local snapshot = screen.bb:copy()
-                cancelAnimation(state, "new page turn")
+                -- With no active stack, save the currently visible page as the
+                -- bottom layer. With an active stack, its base and layers are
+                -- already the authoritative current composite; do not snapshot
+                -- or cancel them.
                 clearArm(state)
-                state.old_bb = snapshot
+                if #state.animations == 0 then
+                    state.old_bb = screen.bb:copy()
+                end
                 state.direction = owner._pageturnanimation_pending_direction
                 owner._pageturnanimation_pending_direction = nil
                 owner._pageturnanimation_force_once = nil
                 state.armed = true
                 state.suppress = false
-                logger.info("PageTurnAnimation: armed interruptible reveal, direction", state.direction)
+                logger.info("PageTurnAnimation: armed reveal, direction", state.direction,
+                    "active layers", #state.animations)
             end
             return state.original_beforePaint(screen, ...)
         end
@@ -231,9 +299,17 @@ function Hook.augment(PageTurnAnimation, Renderer)
         Screen.afterPaint = function(screen, ...)
             local result = state.original_afterPaint(screen, ...)
             if state.bypass then return result end
-            -- A paint with no physical refresh can leave an arm behind. An
-            -- animation itself owns its buffers and must survive this hook.
-            if state.armed then clearArm(state) end
+
+            -- A paint with no physical refresh means the page turn was not
+            -- intercepted. Existing animation layers must not continue drawing
+            -- over that unrelated framebuffer contents.
+            if state.armed then
+                local had_active_layers = #state.animations > 0
+                clearArm(state)
+                if had_active_layers then
+                    cancelAnimations(state, "page repaint was not intercepted")
+                end
+            end
             state.suppress = false
             return result
         end
@@ -246,12 +322,13 @@ function Hook.augment(PageTurnAnimation, Renderer)
                 -- discard any other refreshes in that same KOReader repaint.
                 if state.suppress then return end
 
-                if not state.armed or not state.old_bb then
+                local has_active_layers = #state.animations > 0
+                if not state.armed or (not state.old_bb and not has_active_layers) then
                     -- A dialog or unrelated UI repaint should not be painted on
                     -- top of a moving page. Let it through, but abandon the
                     -- transition because its framebuffer is no longer ours.
-                    if state.animation then
-                        cancelAnimation(state, "external repaint")
+                    if has_active_layers then
+                        cancelAnimations(state, "external repaint")
                     end
                     return original(screen, ...)
                 end
@@ -267,6 +344,9 @@ function Hook.augment(PageTurnAnimation, Renderer)
                 if not ready then
                     logger.warn("PageTurnAnimation: page-turn preflight failed:", why)
                     clearArm(state)
+                    if has_active_layers then
+                        cancelAnimations(state, "page-turn preflight failed")
+                    end
                     return original(screen, ...)
                 end
 
@@ -281,11 +361,15 @@ function Hook.augment(PageTurnAnimation, Renderer)
                 logger.info("PageTurnAnimation: intercepted repaint via", name,
                     "direction", direction, "shape", config.shape,
                     "waveform", config.waveform, "scheduler", config.scheduler,
-                    "delay_ms", config.delay_ms, "full_refresh", config.full_refresh)
+                    "delay_ms", config.delay_ms, "full_refresh", config.full_refresh,
+                    "previous layers", #state.animations)
 
+                -- The renderer now produces one overlay layer. The stack owns
+                -- old_bb only for the first turn; later turns start above the
+                -- existing composite and therefore do not need an old snapshot.
                 local ok, animation, start_error = pcall(
                     Renderer.start,
-                    old_bb,
+                    nil,
                     new_bb,
                     direction,
                     config
@@ -296,14 +380,27 @@ function Hook.augment(PageTurnAnimation, Renderer)
                     state.suppress = false
                     freeBuffer(old_bb)
                     freeBuffer(new_bb)
+                    if has_active_layers then
+                        cancelAnimations(state, "new layer could not start")
+                    end
                     return original(screen, ...)
                 end
 
+                if not state.base_bb then
+                    state.base_bb = old_bb
+                    old_bb = nil
+                end
+                freeBuffer(old_bb)
+
                 animation.config = config
-                state.animation = animation
-                -- Keep the old composite on the RAM framebuffer until the first
-                -- scheduled frame. The physical panel was already showing it.
-                restoreBuffer(screen, old_bb)
+                animation.done = false
+                state.animations[#state.animations + 1] = animation
+                state.latest_animation = animation
+
+                -- The original paint has put the destination page in RAM. Put
+                -- the composited old/current layers back until the new layer's
+                -- first scheduled frame is ready.
+                renderStack(state, Renderer)
                 decrementInterceptedRefresh()
 
                 animation.action = function()
@@ -356,7 +453,7 @@ function Hook.augment(PageTurnAnimation, Renderer)
     local old_init = PageTurnAnimation.init
     function PageTurnAnimation:init()
         old_init(self)
-        cancelAnimation(state, "new document")
+        cancelAnimations(state, "new document")
         clearArm(state)
         state.suppress = false
         state.owner = self
@@ -375,7 +472,7 @@ function Hook.augment(PageTurnAnimation, Renderer)
         self._pageturnanimation_pending_direction = nil
         self._pageturnanimation_force_once = nil
         if state.owner == self then
-            cancelAnimation(state, "document closed")
+            cancelAnimations(state, "document closed")
             state.owner = nil
             clearArm(state)
             state.suppress = false

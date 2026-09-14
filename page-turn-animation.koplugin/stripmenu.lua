@@ -14,8 +14,7 @@ function Menu.augment(PageTurnAnimation, radioItem)
                 and self.strip_shape ~= "bottom_curve2"
                 and self.strip_shape ~= "bottom_curve3"
                 and self.strip_shape ~= "reference_hybrid"
-                and self.strip_shape ~= "page_flip"
-                and self.strip_shape ~= "page_flip_exact" then
+                and self.strip_shape ~= "page_flip" then
             self.strip_shape = "straight"
         end
         self.page_scheduler = G_reader_settings:readSetting("pageturnanimation_page_scheduler") or "free"
@@ -97,7 +96,6 @@ function Menu.augment(PageTurnAnimation, radioItem)
                     settingRadio(self, _("Curved bottom flip 3"), "strip_shape", "bottom_curve3"),
                     settingRadio(self, _("Reference-like hybrid"), "strip_shape", "reference_hybrid"),
                     settingRadio(self, _("GIF page flip (experimental)"), "strip_shape", "page_flip"),
-                    settingRadio(self, _("Exact traced page flip (480 ms)"), "strip_shape", "page_flip_exact"),
                 },
             },
             {

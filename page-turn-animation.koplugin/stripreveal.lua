@@ -1,9 +1,6 @@
 local Device = require("device")
 local ffiUtil = require("ffi/util")
 
-local plugin_dir = debug.getinfo(1, "S").source:match("^@(.*/)") or "./"
-local ExactFlip = dofile(plugin_dir .. "exactflip.lua")
-
 local Screen = Device.screen
 local StripReveal = {}
 
@@ -84,8 +81,7 @@ function StripReveal.preflight(config)
             and shape ~= "bottom_curve2"
             and shape ~= "bottom_curve3"
             and shape ~= "reference_hybrid"
-            and shape ~= "page_flip"
-            and shape ~= "page_flip_exact" then
+            and shape ~= "page_flip" then
         return nil, "Unknown reveal shape: " .. tostring(shape)
     end
     return true
@@ -157,7 +153,7 @@ end
 -- Return how much of a horizontal band has been revealed (0..1).
 -- Diagonal mode bulges most around the middle. Curved-bottom variants keep the
 -- top nearly straight while concentrating different amounts of lead near the
--- lower corner. page_flip uses the traced reference GIF as its moving edge.
+-- lower corner. page_flip uses the sampled reference GIF as its moving edge.
 local function shapedProgress(shape, progress, y_norm)
     if shape == "diagonal" then
         -- Bottom is ahead, top is behind. The edge remains approximately
@@ -203,19 +199,15 @@ local function shapedProgress(shape, progress, y_norm)
 end
 
 -- Start an interruptible reveal. The framebuffer hook owns the scheduling;
--- this module only advances one mathematical frame at a time. Keeping the
--- source and destination buffers on the animation object lets the hook drop
--- an old turn safely when a new page is painted.
+-- this module advances one mathematical frame at a time. The hook composites
+-- several of these animations as an ordered stack, so an older turn can keep
+-- progressing underneath a newer one.
 function StripReveal.start(old, new, direction, config)
     config = config or {}
     local ready, why = StripReveal.preflight(config)
     if not ready then return nil, why end
 
     local shape = config.shape or "straight"
-    if shape == "page_flip_exact" then
-        return ExactFlip.start(old, new, direction, config)
-    end
-
     local sw, sh = Screen.bb:getWidth(), Screen.bb:getHeight()
     local steps = math.max(1, math.floor(tonumber(config.steps) or 6))
     local delay_ms = math.max(0, tonumber(config.delay_ms) or 40)
@@ -229,7 +221,6 @@ function StripReveal.start(old, new, direction, config)
     return {
         style = "strip",
         shape = shape,
-        old = old,
         new = new,
         direction = direction,
         waveform = waveform,
@@ -242,29 +233,58 @@ function StripReveal.start(old, new, direction, config)
         band_h = math.ceil(sh / band_count),
         previous = previous,
         step_index = 0,
+        complete = false,
         last_marker = nil,
         started = nowSeconds(),
     }
 end
 
-function StripReveal.step(animation)
-    if animation.shape == "page_flip_exact" then
-        return ExactFlip.step(animation)
-    end
+-- Paint one animation layer over the framebuffer's existing contents. The
+-- target already contains the page/layers underneath this animation; therefore
+-- this function must paint the complete currently revealed area, not only the
+-- pixels revealed since the previous frame.
+function StripReveal.render(animation, target)
+    local progress = animation.complete
+        and 1
+        or animation.step_index / animation.steps
+    if progress <= 0 then return end
 
+    for band = 1, animation.band_count do
+        local y = (band - 1) * animation.band_h
+        if y >= animation.sh then break end
+        local bh = math.min(animation.band_h, animation.sh - y)
+        local y_norm = (y + bh * 0.5) / animation.sh
+        local local_progress = shapedProgress(animation.shape, progress, y_norm)
+        local dx = math.floor(animation.sw * local_progress + 0.5)
+        local minimum_dx = animation.previous[band] or 0
+        if dx < minimum_dx then dx = minimum_dx end
+        if animation.complete or animation.step_index == animation.steps then
+            dx = animation.sw
+        end
+        if dx > 0 then
+            local x = animation.direction > 0 and animation.sw - dx or 0
+            target:blitFrom(animation.new, x, y, x, y, dx, bh)
+        end
+    end
+end
+
+function StripReveal.step(animation)
     local i = animation.step_index + 1
     if i > animation.steps then
+        local result = {
+            style = animation.style,
+            shape = animation.shape,
+            frames = animation.steps,
+            delay_ms = animation.delay_ms,
+            scheduler = animation.scheduler,
+            waveform = animation.waveform,
+            elapsed = nowSeconds() - animation.started,
+        }
+        animation.complete = true
+        animation.result = result
         return {
             done = true,
-            result = {
-                style = animation.style,
-                shape = animation.shape,
-                frames = animation.steps,
-                delay_ms = animation.delay_ms,
-                scheduler = animation.scheduler,
-                waveform = animation.waveform,
-                elapsed = nowSeconds() - animation.started,
-            },
+            result = result,
         }
     end
 
@@ -300,14 +320,9 @@ function StripReveal.step(animation)
 
         local changed_w = dx - prev_dx
         if changed_w > 0 then
-            local x
-            if animation.direction > 0 then
-                x = animation.sw - dx
-                Screen.bb:blitFrom(animation.new, x, y, x, y, changed_w, bh)
-            else
-                x = prev_dx
-                Screen.bb:blitFrom(animation.new, x, y, x, y, changed_w, bh)
-            end
+            local x = animation.direction > 0
+                and animation.sw - dx
+                or prev_dx
             dirty_left = math.min(dirty_left, x)
             dirty_right = math.max(dirty_right, x + changed_w)
             changed = true
@@ -315,32 +330,27 @@ function StripReveal.step(animation)
         animation.previous[band] = dx
     end
 
-    if changed and dirty_right > dirty_left then
-        animation.last_marker = submitRegion(
-            animation.waveform,
-            dirty_left,
-            0,
-            dirty_right - dirty_left,
-            animation.sh
-        ) or animation.last_marker
-    end
-
     animation.step_index = i
     if i == animation.steps then
-        -- Make the RAM framebuffer exact even if integer rounding left a
-        -- one-pixel gap in one of the bands.
-        Screen.bb:blitFrom(animation.new, 0, 0, 0, 0, animation.sw, animation.sh)
+        animation.complete = true
+        animation.result = {
+            style = animation.style,
+            shape = animation.shape,
+            frames = animation.steps,
+            delay_ms = animation.delay_ms,
+            scheduler = animation.scheduler,
+            waveform = animation.waveform,
+            elapsed = nowSeconds() - animation.started,
+        }
         return {
             done = true,
-            result = {
-                style = animation.style,
-                shape = animation.shape,
-                frames = animation.steps,
-                delay_ms = animation.delay_ms,
-                scheduler = animation.scheduler,
-                waveform = animation.waveform,
-                elapsed = nowSeconds() - animation.started,
-            },
+            dirty = changed and {
+                x = dirty_left,
+                y = 0,
+                w = dirty_right - dirty_left,
+                h = animation.sh,
+            } or nil,
+            result = animation.result,
         }
     end
 
@@ -351,7 +361,16 @@ function StripReveal.step(animation)
     else
         delay = animation.delay_ms / 1000
     end
-    return { done = false, delay = delay }
+    return {
+        done = false,
+        delay = delay,
+        dirty = changed and {
+            x = dirty_left,
+            y = 0,
+            w = dirty_right - dirty_left,
+            h = animation.sh,
+        } or nil,
+    }
 end
 
 -- KPW4 reveal with configurable temporal steps. Straight mode uses full-height
@@ -363,96 +382,31 @@ function StripReveal.run(old, new, direction, config)
     local ready, why = StripReveal.preflight(config)
     if not ready then error(why) end
 
-    local shape = config.shape or "straight"
-    if shape == "page_flip_exact" then
-        return ExactFlip.run(old, new, direction, config)
-    end
-
-    local sw, sh = Screen.bb:getWidth(), Screen.bb:getHeight()
-    local steps = math.max(1, math.floor(tonumber(config.steps) or 6))
-    local delay_ms = math.max(0, tonumber(config.delay_ms) or 40)
-    local scheduler = config.scheduler == "fixed" and "fixed" or "free"
-    local waveform = config.waveform or "auto"
-    local band_count = shape == "straight" and 1 or SHAPE_BANDS
-    local band_h = math.ceil(sh / band_count)
-    local previous = {}
     local last_marker
-    local started = nowSeconds()
+    local animation = StripReveal.start(old, new, direction, config)
+    local sw, sh = Screen.bb:getWidth(), Screen.bb:getHeight()
+    local waveform = animation.waveform
 
-    for band = 1, band_count do previous[band] = 0 end
     Screen.bb:blitFrom(old, 0, 0, 0, 0, sw, sh)
-
-    for i = 1, steps do
-        -- Fixed mode targets absolute strip times, so drawing/submit overhead
-        -- does not accumulate into progressively later frames.
-        if scheduler == "fixed" and i > 1 and delay_ms > 0 then
-            local deadline = started + ((i - 1) * delay_ms / 1000)
-            local now = nowSeconds()
-            if now < deadline then
-                ffiUtil.usleep(math.floor((deadline - now) * 1000000))
-            end
-        end
-
-        local progress = i / steps
-        local dirty_left = sw
-        local dirty_right = 0
-        local changed = false
-
-        for band = 1, band_count do
-            local y = (band - 1) * band_h
-            if y >= sh then break end
-            local bh = math.min(band_h, sh - y)
-            local y_norm = (y + bh * 0.5) / sh
-            local local_progress = shapedProgress(shape, progress, y_norm)
-            local dx = math.floor(sw * local_progress + 0.5)
-            local prev_dx = previous[band] or 0
-
-            -- Keep every band monotonic so a slightly noisy traced GIF edge can
-            -- never move backwards and re-expose pixels from the old page.
-            if dx < prev_dx then dx = prev_dx end
-            if i == steps then dx = sw end
-
-            local changed_w = dx - prev_dx
-            if changed_w > 0 then
-                local x
-                if direction > 0 then
-                    x = sw - dx
-                    Screen.bb:blitFrom(new, x, y, x, y, changed_w, bh)
-                else
-                    x = prev_dx
-                    Screen.bb:blitFrom(new, x, y, x, y, changed_w, bh)
-                end
-                dirty_left = math.min(dirty_left, x)
-                dirty_right = math.max(dirty_right, x + changed_w)
-                changed = true
-            end
-            previous[band] = dx
-        end
-
-        if changed and dirty_right > dirty_left then
-            -- One E-Ink update per temporal step. For shaped edges this box is
-            -- wider than the actually changed pixels, but avoids many small
-            -- panel submissions and keeps the animation smooth on PW4.
+    while true do
+        local frame = StripReveal.step(animation)
+        StripReveal.render(animation, Screen.bb)
+        if frame.dirty then
             last_marker = submitRegion(
-                waveform, dirty_left, 0, dirty_right - dirty_left, sh) or last_marker
+                waveform,
+                frame.dirty.x,
+                frame.dirty.y,
+                frame.dirty.w,
+                frame.dirty.h
+            ) or last_marker
         end
-
-        if scheduler == "free" and i < steps then
-            sleepMs(delay_ms)
-        end
+        if frame.done then break end
+        sleepMs((frame.delay or 0) * 1000)
     end
 
     waitMarker(last_marker)
     Screen.bb:blitFrom(new, 0, 0, 0, 0, sw, sh)
-    return {
-        style = "strip",
-        shape = shape,
-        frames = steps,
-        delay_ms = delay_ms,
-        scheduler = scheduler,
-        waveform = waveform,
-        elapsed = nowSeconds() - started,
-    }
+    return animation.result
 end
 
 return StripReveal

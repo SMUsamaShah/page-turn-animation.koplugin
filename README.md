@@ -6,7 +6,7 @@ The installable plugin folder is `page-turn-animation.koplugin`. Its KOReader pl
 
 Version **0.1.0** provides a fast configurable-step reveal with straight,
 diagonal, several curved edge shapes, a mathematical reference-like hybrid,
-and GIF-derived page-flip modes.
+and a GIF-derived page-flip mode.
 
 ## Installation
 
@@ -27,9 +27,10 @@ For a normal one-page turn:
 
 Animation steps are scheduled individually, so KOReader can process input between
 frames. If another eligible one-page turn arrives before the current one ends,
-the plugin snapshots the currently composited frame, cancels the old continuation,
-and starts the new turn from that frame. This creates the intended layered,
-quickly-turned-pages look instead of waiting for the first animation to finish.
+the plugin keeps the earlier turn alive underneath a new page layer. Each layer
+continues to its own completion, and the framebuffer is composited from the
+oldest page upward on every frame. This creates the intended layered,
+quickly-turned-pages look instead of stopping the first animation in place.
 
 The overlap is a framebuffer-level effect. The PW4 E-Ink controller can still
 serialize or wait for individual waveform updates, particularly with AUTO/GC16;
@@ -57,11 +58,11 @@ The shaped modes still issue only one physical panel update per animation step; 
 A mathematical approximation of the supplied hand-made outline. It combines a
 small early lead with a soft middle bulge across the vertical edge profile.
 
-### GIF-derived and exact trace
+### GIF-derived
 
-**GIF page flip** uses the sampled outline as a moving boundary. **Exact traced
-page flip** uses the four extracted silhouette states. Both now use the same
-interruptible scheduling and can be rebased by a later page turn.
+**GIF page flip** uses the sampled outline as a moving boundary. It uses the
+same interruptible scheduling as the mathematical shapes and can continue
+under a later page turn.
 
 ## Page-turn animation settings
 
@@ -74,7 +75,6 @@ interruptible scheduling and can be rebased by a later page turn.
 - **Curved bottom flip 3**
 - **Reference-like hybrid**
 - **GIF page flip (experimental)**
-- **Exact traced page flip (480 ms)**
 
 ### Waveform
 
