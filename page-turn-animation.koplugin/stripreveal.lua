@@ -202,6 +202,158 @@ local function shapedProgress(shape, progress, y_norm)
     return progress
 end
 
+-- Start an interruptible reveal. The framebuffer hook owns the scheduling;
+-- this module only advances one mathematical frame at a time. Keeping the
+-- source and destination buffers on the animation object lets the hook drop
+-- an old turn safely when a new page is painted.
+function StripReveal.start(old, new, direction, config)
+    config = config or {}
+    local ready, why = StripReveal.preflight(config)
+    if not ready then return nil, why end
+
+    local shape = config.shape or "straight"
+    if shape == "page_flip_exact" then
+        return ExactFlip.start(old, new, direction, config)
+    end
+
+    local sw, sh = Screen.bb:getWidth(), Screen.bb:getHeight()
+    local steps = math.max(1, math.floor(tonumber(config.steps) or 6))
+    local delay_ms = math.max(0, tonumber(config.delay_ms) or 40)
+    local scheduler = config.scheduler == "fixed" and "fixed" or "free"
+    local waveform = config.waveform or "auto"
+    local band_count = shape == "straight" and 1 or SHAPE_BANDS
+    local previous = {}
+
+    for band = 1, band_count do previous[band] = 0 end
+
+    return {
+        style = "strip",
+        shape = shape,
+        old = old,
+        new = new,
+        direction = direction,
+        waveform = waveform,
+        scheduler = scheduler,
+        steps = steps,
+        delay_ms = delay_ms,
+        sw = sw,
+        sh = sh,
+        band_count = band_count,
+        band_h = math.ceil(sh / band_count),
+        previous = previous,
+        step_index = 0,
+        last_marker = nil,
+        started = nowSeconds(),
+    }
+end
+
+function StripReveal.step(animation)
+    if animation.shape == "page_flip_exact" then
+        return ExactFlip.step(animation)
+    end
+
+    local i = animation.step_index + 1
+    if i > animation.steps then
+        return {
+            done = true,
+            result = {
+                style = animation.style,
+                shape = animation.shape,
+                frames = animation.steps,
+                delay_ms = animation.delay_ms,
+                scheduler = animation.scheduler,
+                waveform = animation.waveform,
+                elapsed = nowSeconds() - animation.started,
+            },
+        }
+    end
+
+    -- Fixed mode targets absolute times without sleeping in the UI callback.
+    -- If the callback was scheduled a little early, ask the hook to try again
+    -- at the deadline instead of advancing the curve prematurely.
+    if animation.scheduler == "fixed" and i > 1 and animation.delay_ms > 0 then
+        local deadline = animation.started + ((i - 1) * animation.delay_ms / 1000)
+        local now = nowSeconds()
+        if now < deadline then
+            return { done = false, delay = deadline - now }
+        end
+    end
+
+    local progress = i / animation.steps
+    local dirty_left = animation.sw
+    local dirty_right = 0
+    local changed = false
+
+    for band = 1, animation.band_count do
+        local y = (band - 1) * animation.band_h
+        if y >= animation.sh then break end
+        local bh = math.min(animation.band_h, animation.sh - y)
+        local y_norm = (y + bh * 0.5) / animation.sh
+        local local_progress = shapedProgress(animation.shape, progress, y_norm)
+        local dx = math.floor(animation.sw * local_progress + 0.5)
+        local prev_dx = animation.previous[band] or 0
+
+        -- Keep every band monotonic so a curved boundary cannot re-expose old
+        -- pixels if a parameter or sampled edge moves backwards by one pixel.
+        if dx < prev_dx then dx = prev_dx end
+        if i == animation.steps then dx = animation.sw end
+
+        local changed_w = dx - prev_dx
+        if changed_w > 0 then
+            local x
+            if animation.direction > 0 then
+                x = animation.sw - dx
+                Screen.bb:blitFrom(animation.new, x, y, x, y, changed_w, bh)
+            else
+                x = prev_dx
+                Screen.bb:blitFrom(animation.new, x, y, x, y, changed_w, bh)
+            end
+            dirty_left = math.min(dirty_left, x)
+            dirty_right = math.max(dirty_right, x + changed_w)
+            changed = true
+        end
+        animation.previous[band] = dx
+    end
+
+    if changed and dirty_right > dirty_left then
+        animation.last_marker = submitRegion(
+            animation.waveform,
+            dirty_left,
+            0,
+            dirty_right - dirty_left,
+            animation.sh
+        ) or animation.last_marker
+    end
+
+    animation.step_index = i
+    if i == animation.steps then
+        -- Make the RAM framebuffer exact even if integer rounding left a
+        -- one-pixel gap in one of the bands.
+        Screen.bb:blitFrom(animation.new, 0, 0, 0, 0, animation.sw, animation.sh)
+        return {
+            done = true,
+            result = {
+                style = animation.style,
+                shape = animation.shape,
+                frames = animation.steps,
+                delay_ms = animation.delay_ms,
+                scheduler = animation.scheduler,
+                waveform = animation.waveform,
+                elapsed = nowSeconds() - animation.started,
+            },
+        }
+    end
+
+    local delay
+    if animation.scheduler == "fixed" then
+        local next_deadline = animation.started + (i * animation.delay_ms / 1000)
+        delay = math.max(0, next_deadline - nowSeconds())
+    else
+        delay = animation.delay_ms / 1000
+    end
+    return { done = false, delay = delay }
+end
+
 -- KPW4 reveal with configurable temporal steps. Straight mode uses full-height
 -- vertical strips. Shaped modes divide the page into horizontal bands in RAM,
 -- but still submit only ONE panel update per temporal step: the bounding

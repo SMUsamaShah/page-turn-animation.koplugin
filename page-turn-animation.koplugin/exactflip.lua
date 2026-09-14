@@ -126,6 +126,98 @@ local function blitState(old, new, state, direction, sw, sh)
     end
 end
 
+-- Create an interruptible version of the traced animation. The synchronous
+-- runner below is kept for compatibility, but the page-turn hook uses these
+-- two functions so KOReader can process input between visible states.
+function ExactFlip.start(old, new, direction, config)
+    config = config or {}
+    local sw, sh = Screen.bb:getWidth(), Screen.bb:getHeight()
+    return {
+        style = "exact_trace",
+        shape = "page_flip_exact",
+        old = old,
+        new = new,
+        direction = direction,
+        waveform = config.waveform or "auto",
+        sw = sw,
+        sh = sh,
+        state_index = 1,
+        prev_x0 = 0,
+        prev_y0 = 0,
+        prev_x1 = sw,
+        prev_y1 = sh,
+        last_marker = nil,
+        started = nowSeconds(),
+    }
+end
+
+function ExactFlip.step(animation)
+    local sw, sh = animation.sw, animation.sh
+    local state = STATES[animation.state_index]
+
+    if state then
+        blitState(
+            animation.old,
+            animation.new,
+            state,
+            animation.direction,
+            sw,
+            sh
+        )
+
+        local x0, y0, x1, y1 = stateBounds(
+            state,
+            animation.direction,
+            sw,
+            sh
+        )
+        local dirty_x0 = math.min(animation.prev_x0, x0)
+        local dirty_y0 = math.min(animation.prev_y0, y0)
+        local dirty_x1 = math.max(animation.prev_x1, x1)
+        local dirty_y1 = math.max(animation.prev_y1, y1)
+
+        animation.last_marker = submitRegion(
+            animation.waveform,
+            dirty_x0,
+            dirty_y0,
+            dirty_x1 - dirty_x0,
+            dirty_y1 - dirty_y0
+        ) or animation.last_marker
+
+        animation.prev_x0, animation.prev_y0 = x0, y0
+        animation.prev_x1, animation.prev_y1 = x1, y1
+        animation.state_index = animation.state_index + 1
+
+        return {
+            done = false,
+            delay = math.max(0, state.duration_ms) / 1000,
+        }
+    end
+
+    -- The source GIF ends on a blank frame. Here that means only the new page.
+    Screen.bb:blitFrom(animation.new, 0, 0, 0, 0, sw, sh)
+    animation.last_marker = submitRegion(
+        animation.waveform,
+        animation.prev_x0,
+        animation.prev_y0,
+        animation.prev_x1 - animation.prev_x0,
+        animation.prev_y1 - animation.prev_y0
+    ) or animation.last_marker
+
+    return {
+        done = true,
+        result = {
+            style = animation.style,
+            shape = animation.shape,
+            frames = #STATES,
+            delay_ms = 120,
+            scheduler = "reference",
+            waveform = animation.waveform,
+            elapsed = nowSeconds() - animation.started,
+        },
+    }
+end
+
 function ExactFlip.run(old, new, direction, config)
     config = config or {}
     local waveform = config.waveform or "auto"
