@@ -1,6 +1,9 @@
 local Device = require("device")
 local ffiUtil = require("ffi/util")
 
+local plugin_dir = debug.getinfo(1, "S").source:match("^@(.*/)") or "./"
+local ExactFlip = dofile(plugin_dir .. "exactflip.lua")
+
 local Screen = Device.screen
 local StripReveal = {}
 
@@ -80,7 +83,8 @@ function StripReveal.preflight(config)
             and shape ~= "bottom_curve"
             and shape ~= "bottom_curve2"
             and shape ~= "bottom_curve3"
-            and shape ~= "page_flip" then
+            and shape ~= "page_flip"
+            and shape ~= "page_flip_exact" then
         return nil, "Unknown reveal shape: " .. tostring(shape)
     end
     return true
@@ -196,12 +200,16 @@ function StripReveal.run(old, new, direction, config)
     local ready, why = StripReveal.preflight(config)
     if not ready then error(why) end
 
+    local shape = config.shape or "straight"
+    if shape == "page_flip_exact" then
+        return ExactFlip.run(old, new, direction, config)
+    end
+
     local sw, sh = Screen.bb:getWidth(), Screen.bb:getHeight()
     local steps = math.max(1, math.floor(tonumber(config.steps) or 6))
     local delay_ms = math.max(0, tonumber(config.delay_ms) or 40)
     local scheduler = config.scheduler == "fixed" and "fixed" or "free"
     local waveform = config.waveform or "auto"
-    local shape = config.shape or "straight"
     local band_count = shape == "straight" and 1 or SHAPE_BANDS
     local band_h = math.ceil(sh / band_count)
     local previous = {}
