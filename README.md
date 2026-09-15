@@ -127,3 +127,6 @@ Internal `no_page_turn` calls and multi-page jumps are left alone.
 ## Self-update
 
 **update plugin** remains the final menu item. It updates only `page-turn-animation.koplugin` from this repository's `main` branch, verifies revision/blob integrity, syntax-checks downloaded Lua, stages the replacement, retains a rollback backup, and offers to restart KOReader.
+## Attribution
+
+This plugin is based on the KOReader page-animation plugin found in the [r/kindlejailbreak Reddit thread](https://old.reddit.com/r/kindlejailbreak/comments/1um8v2i/page_animation_for_kpw4_koreader/).
